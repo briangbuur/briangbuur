@@ -1,0 +1,99 @@
+/*************************************************************************************************
+ * --- Fix Script Metadata ---
+ * Name:          Definitive Deep Dependency Discovery
+ * SCRIPT_VERSION:      v17.0
+ * Description:   Performs a deep, multi-level recursive analysis of all plugin dependencies,
+ * starting from a target application. This script continues to discover
+ * dependencies for every plugin it finds, including platform components,
+ * to build a complete and unabridged hierarchy.
+ *************************************************************************************************/
+(function() {
+    'use strict';
+
+    // --- Configuration ---
+    const STARTING_APP_SCOPE = 'sn_wsd_core';
+
+    const dependencyMap = new Map(); // Stores dependencies for each scope
+    const appNames = new Map(); // Stores the friendly name for each scope
+    const processedApps = new Set(); // Prevents infinite loops
+
+    gs.info(`--- Starting Definitive Deep Dependency Discovery v17.0 for: ${STARTING_APP_SCOPE} ---`);
+
+    // Start the recursive discovery
+    discoverDependencies(STARTING_APP_SCOPE);
+
+    // --- Output the results in a structured, indented format ---
+    gs.info(`\n--- Complete Dependency Tree ---`);
+    const printed = new Set();
+    printHierarchy(STARTING_APP_SCOPE, 0, printed);
+
+    gs.info('\n--- End of Analysis ---');
+
+    /*************************************************************************************************
+     * CORE DISCOVERY FUNCTION (RECURSIVE)
+     *************************************************************************************************/
+    function discoverDependencies(appScope) {
+        if (!appScope || processedApps.has(appScope)) {
+            return; // Already processed or invalid scope
+        }
+        processedApps.add(appScope);
+
+        const grApp = new GlideRecord('sys_store_app');
+        if (!grApp.get('scope', appScope)) {
+            // If not in the store, it might be a platform app. We'll still record it.
+            appNames.set(appScope, `Platform Component (${appScope})`);
+            dependencyMap.set(appScope, []);
+            return;
+        }
+
+        appNames.set(appScope, grApp.getValue('name'));
+        
+        const dependenciesValue = grApp.getValue('dependencies');
+        let directDependencies = [];
+
+        if (dependenciesValue) {
+            directDependencies = dependenciesValue.split(',').map(d => d.trim().split(':')[0]);
+        }
+        
+        dependencyMap.set(appScope, directDependencies);
+
+        // Recurse into each dependency
+        directDependencies.forEach(depScope => {
+            discoverDependencies(depScope);
+        });
+    }
+
+    /*************************************************************************************************
+     * HIERARCHY PRINTING FUNCTION
+     *************************************************************************************************/
+    function printHierarchy(appScope, level, printedSet) {
+        const indent = '   '.repeat(level);
+        const appName = appNames.get(appScope) || `Unknown App (${appScope})`;
+
+        // Print the app itself
+        gs.info(`${indent}✅ ${appName} (${appScope})`);
+        
+        // Mark this top-level entry as printed
+        if (level === 0) {
+            printedSet.add(appScope);
+        }
+
+        const dependencies = dependencyMap.get(appScope) || [];
+        dependencies.forEach(depScope => {
+            const depName = appNames.get(depScope) || `Unknown App (${depScope})`;
+            const depIndent = '   '.repeat(level + 1);
+            gs.info(`${depIndent}-> Depends on: ${depName} (${depScope})`);
+
+            // To avoid re-printing the entire tree for a dependency we've already detailed,
+            // we check if it has been a top-level print item before.
+            if (!printedSet.has(depScope)) {
+                 // If a dependency itself has dependencies, print its tree.
+                 if (dependencyMap.has(depScope) && dependencyMap.get(depScope).length > 0) {
+                     printHierarchy(depScope, level + 2, printedSet);
+                 }
+                 printedSet.add(depScope); // Mark as printed
+            }
+        });
+    }
+
+})();

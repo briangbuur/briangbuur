@@ -1,0 +1,111 @@
+graph TD;
+    %% --- Node Styles ---
+    classDef wsd fill:#D5E8D4,stroke:#82B366,stroke-width:2px;
+    classDef platform fill:#DAE8FC,stroke:#6C8EBF,stroke-width:2px;
+
+    %% --- WSD Application Node Definitions ---
+    sn_wsd_core["Workplace Core<br/>(sn_wsd_core)"];
+    sn_wsd_la["Workplace Lease Administration<br/>(sn_wsd_la)"];
+    sn_wsd_components["Workplace Service Delivery Components<br/>(sn_wsd_components)"];
+    sn_wsd_stackplan["Workplace Stack Plan<br/>(sn_wsd_stackplan)"];
+    sn_wsd_case["Workplace Case Management<br/>(sn_wsd_case)"];
+    sn_wsd_central["Workplace Central<br/>(sn_wsd_central)"];
+    sn_wsd_concierge["Workplace Concierge<br/>(sn_wsd_concierge)"];
+    sn_wsd_wc["Workplace Connectors<br/>(sn_wsd_wc)"];
+    sn_wsd_rsv["Workplace Reservation Management<br/>(sn_wsd_rsv)"];
+    sn_wsd_mobile["Workplace Service Delivery for Mobile<br/>(sn_wsd_mobile)"];
+    sn_wsd_kiosk["Workplace Services Kiosk<br/>(sn_wsd_kiosk)"];
+    sn_wsd_spcmgmt["Workplace Space Management<br/>(sn_wsd_spcmgmt)"];
+    sn_wsd_space_map["Workplace Space Mapping<br/>(sn_wsd_space_map)"];
+    sn_wsd_visitor["Workplace Visitor Management<br/>(sn_wsd_visitor)"];
+    sn_wsd_agent_mob["Workplace Agent for mobile<br/>(sn_wsd_agent_mob)"];
+    sn_wsd_indoor_map["Workplace Indoor Mapping<br/>(sn_wsd_indoor_map)"];
+    sn_wsd_maintenance["Workplace Maintenance Management<br/>(sn_wsd_maintenance)"];
+    sn_wsd_move["Workplace Move Management<br/>(sn_wsd_move)"];
+
+    %% --- Platform & Other Dependency Node Definitions ---
+    com_glideapp_user_criteria_scoped_api["User Criteria Scoped API<br/>(com.glideapp.user_criteria.scoped.api)"];
+    com_snc_signaturepad["Signature Pad<br/>(com.snc.signaturepad)"];
+    com_snc_platform_document_management["Document Management<br/>(com.snc.platform_document_management)"];
+    com_snc_clotho["Clotho<br/>(com.snc.clotho)"];
+    sn_map_component["Indoor Mapping Component<br/>(sn_map_component)"];
+    sn_map_core["Indoor Mapping<br/>(sn_map_core)"];
+    com_glide_hub_integration_runtime["Hub Integration Runtime<br/>(com.glide.hub.integration.runtime)"];
+    com_glide_hub_action_step_rest["Hub REST Action Step<br/>(com.glide.hub.action_step.rest)"];
+    com_glide_hub_action_step_script["Hub Script Action Step<br/>(com.glide.hub.action_step.script)"];
+    sn_ent["Expanded Model and Asset Classes<br/>(sn_ent)"];
+    sn_cmdb_foundation["Data Foundation Model<br/>(sn_cmdb_foundation)"];
+    sn_fsm_pm["Planned Maintenance Management<br/>(sn_fsm_pm)"];
+    com_snc_planned_maintenance["Planned Maintenance<br/>(com.snc.planned_maintenance)"];
+
+    %% --- Applying Styles ---
+    class sn_wsd_core,sn_wsd_la,sn_wsd_components,sn_wsd_stackplan,sn_wsd_case,sn_wsd_central,sn_wsd_concierge,sn_wsd_wc,sn_wsd_rsv,sn_wsd_mobile,sn_wsd_kiosk,sn_wsd_spcmgmt,sn_wsd_space_map,sn_wsd_visitor,sn_wsd_agent_mob,sn_wsd_indoor_map,sn_wsd_maintenance,sn_wsd_move wsd;
+    class com_glideapp_user_criteria_scoped_api,com_snc_signaturepad,com_snc_platform_document_management,com_snc_clotho,sn_map_component,sn_map_core,com_glide_hub_integration_runtime,com_glide_hub_action_step_rest,com_glide_hub_action_step_script,sn_ent,sn_cmdb_foundation,sn_fsm_pm,com_snc_planned_maintenance platform;
+
+    %% --- Dependency Links (Based on Deep Discovery Output) ---
+    
+    %% Tree for Workplace Core
+    sn_wsd_core --> com_glideapp_user_criteria_scoped_api;
+    sn_wsd_core --> com_snc_signaturepad;
+    
+    %% Tree for Workplace Lease Administration
+    sn_wsd_la --> com_snc_platform_document_management;
+    
+    %% Tree for Workplace Case Management
+    sn_wsd_case --> sn_wsd_core;
+    
+    %% Tree for Workplace Central
+    sn_wsd_central --> com_snc_signaturepad;
+    sn_wsd_central --> com_glideapp_user_criteria_scoped_api;
+    sn_wsd_central --> sn_wsd_core;
+    
+    %% Tree for Workplace Concierge
+    sn_wsd_concierge --> sn_wsd_core;
+    
+    %% Tree for Workplace Connectors
+    sn_wsd_wc --> com_snc_clotho;
+    sn_wsd_wc --> sn_wsd_core;
+    
+    %% Tree for Workplace Reservation Management
+    sn_wsd_rsv --> sn_wsd_core;
+    
+    %% Tree for Workplace Service Delivery for Mobile
+    sn_wsd_mobile --> sn_wsd_core;
+    
+    %% Tree for Workplace Services Kiosk
+    sn_wsd_kiosk --> sn_wsd_core;
+    
+    %% Tree for Workplace Space Management
+    sn_wsd_spcmgmt --> sn_wsd_core;
+    sn_wsd_spcmgmt --> sn_map_component;
+    sn_wsd_spcmgmt --> sn_wsd_stackplan;
+    sn_map_component --> sn_map_core;
+    sn_map_core --> com_glideapp_user_criteria_scoped_api;
+    sn_map_core --> com_glide_hub_integration_runtime;
+    sn_map_core --> com_glide_hub_action_step_rest;
+    sn_map_core --> com_glide_hub_action_step_script;
+    
+    %% Tree for Workplace Space Mapping
+    sn_wsd_space_map --> sn_wsd_core;
+    
+    %% Tree for Workplace Visitor Management
+    sn_wsd_visitor --> sn_wsd_core;
+    
+    %% Tree for Workplace Agent for mobile
+    sn_wsd_agent_mob --> sn_wsd_case;
+    
+    %% Tree for Workplace Indoor Mapping
+    sn_wsd_indoor_map --> sn_map_core;
+    sn_wsd_indoor_map --> sn_wsd_space_map;
+    sn_wsd_indoor_map --> sn_wsd_core;
+    
+    %% Tree for Workplace Maintenance Management
+    sn_wsd_maintenance --> sn_wsd_central;
+    sn_wsd_maintenance --> sn_wsd_case;
+    sn_wsd_maintenance --> sn_ent;
+    sn_wsd_maintenance --> sn_fsm_pm;
+    sn_ent --> sn_cmdb_foundation;
+    sn_fsm_pm --> com_snc_planned_maintenance;
+    
+    %% Tree for Workplace Move Management
+    sn_wsd_move --> sn_wsd_case;

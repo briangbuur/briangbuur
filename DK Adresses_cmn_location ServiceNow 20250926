@@ -1,0 +1,405 @@
+Perfect—here’s a **single, copy-paste Background Script** that installs everything needed on any PDI. It’s **idempotent**, adheres to your conventions, and includes:
+
+* Properties (base URL, allowlist)
+* Custom fields on `cmn_location`
+* Script Include **DAWAAddressClient v1.1.8**
+* UI Policy: **Country mandatory (form only)**
+* Two UI Actions on `cmn_location`:
+
+  * **DAWA Normalize** (saves back to the same record, not list)
+  * **DAWA Debug Resolve** (no save; shows diagnostics and stays on the form)
+* An App Menu **“DAWA Integration”** + Module **“Locations (DAWA)”** → opens `cmn_location.list`
+
+> Drop this into **Scripts → Background** on the target PDI and run.
+
+```javascript
+/***********************************************************************************************
+ * DAWA Installer v1.2.0  (Background Script)
+ * Business goal: Normalize Danish addresses on cmn_location via DAWA, no-code friendly UX.
+ * Families: Zurich / Yokohama / Xanadu
+ * Security/Perf: setWorkflow(false), autoSysFields(false) in server actions; HTTPS only.
+ * Logging: "DAWA-Loc" (System Logs)
+ *
+ * Change Log:
+ *  - v1.2.0 (Major): One-shot full installer for any PDI (props, fields, SI, UI policy, UI actions, module)
+ *  - v1.1.8 (Minor): Added UI Policy for country mandatory (form only)
+ *  - v1.1.7a (Major): Robust field fallbacks, do-not-blank safeguards, Unicode-safe ("dør")
+ ***********************************************************************************************/
+
+(function installDAWA(){
+  var LOG = "DAWA-Loc";
+  var stats = {
+    props_created:0, props_updated:0,
+    fields_created:0,
+    si_created:false, si_updated:false,
+    uip_created:false, uip_updated:false,
+    uipa_created:false, uipa_updated:false,
+    uia_norm_created:false, uia_norm_updated:false,
+    uia_dbg_created:false,  uia_dbg_updated:false,
+    menu_created:false, menu_updated:false,
+    module_created:false, module_updated:false,
+    errors:[]
+  };
+  function info(msg,obj){ gs.log("[DAWA-Loc] "+msg+(obj?" :: "+JSON.stringify(obj):""), LOG); }
+  function err(msg,e){ var m=msg+(e?(" :: "+e):""); gs.log("[DAWA-Loc][ERR] "+m, LOG); stats.errors.push(m); }
+
+  /*****************************************
+   * Helpers
+   *****************************************/
+  function ensureProperty(name, value, desc){
+    try{
+      var gr = new GlideRecord('sys_properties');
+      gr.addQuery('name', name); gr.query();
+      if (gr.next()){
+        var changed = (String(gr.value) !== String(value)) || (String(gr.description||'') !== String(desc||''));
+        if (changed){
+          gr.value = value;
+          if (desc) gr.description = desc;
+          gr.update(); stats.props_updated++;
+          info("Property updated", {name:name, value:value});
+        }
+      } else {
+        gr.initialize();
+        gr.name = name; gr.value = value; gr.type = "string";
+        if (desc) gr.description = desc;
+        gr.insert(); stats.props_created++;
+        info("Property created", {name:name, value:value});
+      }
+    }catch(e){ err("ensureProperty("+name+")", e); }
+  }
+
+  function ensureField(table, element, label, internal_type, maxlen){
+    try{
+      var d = new GlideRecord('sys_dictionary');
+      d.addQuery('name', table);
+      d.addQuery('element', element);
+      d.query();
+      if (d.next()){
+        return false;
+      } else {
+        d.initialize();
+        d.name = table;
+        d.element = element;
+        d.column_label = label;
+        d.internal_type = internal_type; // 'string'
+        if (maxlen) d.max_length = String(maxlen);
+        d.active = true;
+        d.display = false;
+        d.insert();
+        stats.fields_created++;
+        info("Field created", {table:table, element:element, type:internal_type, max_length:maxlen});
+        return true;
+      }
+    }catch(e){ err("ensureField("+table+"."+element+")", e); }
+  }
+
+  function ensureUIAction(table, name, label, order, script, condition){
+    try{
+      var a = new GlideRecord('sys_ui_action');
+      a.addQuery('table', table);
+      a.addQuery('name', name);
+      a.query();
+      if (a.next()){
+        var changed = (String(a.script) !== script) || (String(a.label) !== label) || (String(a.condition||'') !== String(condition||''));
+        if (changed){
+          a.label = label;
+          a.order = order;
+          a.form_button = true;
+          a.client = false;
+          a.condition = condition || '';
+          a.script = script;
+          a.update();
+          return "updated";
+        }
+        return "exists";
+      } else {
+        a.initialize();
+        a.table = table;
+        a.name = name;
+        a.label = label;
+        a.order = order;
+        a.form_button = true;
+        a.client = false;
+        a.condition = condition || '';
+        a.script = script;
+        a.insert();
+        return "created";
+      }
+    }catch(e){ err("ensureUIAction("+table+","+name+")", e); }
+  }
+
+  function ensureScriptInclude(name, body){
+    try{
+      var si = new GlideRecord('sys_script_include');
+      si.addQuery('name', name); si.query();
+      if (si.next()){
+        si.access = 'public'; si.ajax = false; si.active = true;
+        si.script = body; si.update(); stats.si_updated = true;
+        info("Script Include updated", {name:name});
+      } else {
+        si.initialize();
+        si.name = name; si.access = 'public'; si.ajax = false; si.active = true;
+        si.script = body; si.insert(); stats.si_created = true;
+        info("Script Include created", {name:name});
+      }
+    }catch(e){ err("ensureScriptInclude("+name+")", e); }
+  }
+
+  function ensureUIPolicy_CountryMandatory(){
+    try{
+      var policyName = 'DAWA: Country mandatory (form only)';
+      var up = new GlideRecord('sys_ui_policy');
+      up.addQuery('table','cmn_location');
+      up.addQuery('short_description', policyName);
+      up.query();
+      var upId;
+      if (up.next()){
+        up.active = true; up.on_load = true; up.run_scripts = false; up.conditions = ''; up.order = 100;
+        up.update(); upId = String(up.getUniqueValue()); stats.uip_updated = true;
+        info("UI Policy updated", {id:upId});
+      } else {
+        up.initialize();
+        up.table = 'cmn_location';
+        up.short_description = policyName;
+        up.active = true; up.on_load = true; up.run_scripts = false; up.conditions = ''; up.order = 100;
+        upId = up.insert(); stats.uip_created = true;
+        info("UI Policy created", {id:upId});
+      }
+      // Action for 'country'
+      if (upId){
+        var a = new GlideRecord('sys_ui_policy_action');
+        a.addQuery('ui_policy', upId);
+        a.addQuery('field', 'country');
+        a.query();
+        if (a.next()){
+          a.mandatory = true; a.visible = true; a.update(); stats.uipa_updated = true;
+          info("UI Policy Action updated", {field:'country'});
+        } else {
+          a.initialize();
+          a.ui_policy = upId; a.field = 'country'; a.mandatory = true; a.visible = true;
+          a.insert(); stats.uipa_created = true;
+          info("UI Policy Action created", {field:'country'});
+        }
+      }
+    }catch(e){ err("ensureUIPolicy_CountryMandatory", e); }
+  }
+
+  function ensureAppMenuAndModule(){
+    try{
+      // Create Application Menu
+      var appName = 'DAWA Integration';
+      var app = new GlideRecord('sys_app_application');
+      app.addQuery('title', appName); app.query();
+      var appId;
+      if (app.next()){
+        app.active = true; app.update(); appId = String(app.getUniqueValue()); stats.menu_updated = true;
+        info("App Menu updated", {title: appName});
+      } else {
+        app.initialize();
+        app.title = appName; app.hint = 'DAWA tools and shortcuts';
+        app.active = true; app.order = 50;
+        appId = app.insert(); stats.menu_created = true;
+        info("App Menu created", {title: appName, id: appId});
+      }
+      // Module: Locations (DAWA) -> cmn_location.list
+      if (appId){
+        var modLabel = 'Locations (DAWA)';
+        var m = new GlideRecord('sys_app_module');
+        m.addQuery('title', modLabel); m.addQuery('application', appId); m.query();
+        if (m.next()){
+          // For list modules, set: link_type='LIST', name='cmn_location'
+          m.active = true; m.link_type = 'LIST'; m.name = 'cmn_location';
+          m.update(); stats.module_updated = true;
+          info("Module updated", {label: modLabel});
+        } else {
+          m.initialize();
+          m.application = appId; m.title = modLabel; m.active = true; m.order = 100;
+          m.link_type = 'LIST'; m.name = 'cmn_location';
+          m.insert(); stats.module_created = true;
+          info("Module created", {label: modLabel});
+        }
+      }
+    }catch(e){ err("ensureAppMenuAndModule", e); }
+  }
+
+  /*****************************************
+   * 1) Properties (idempotent)
+   *****************************************/
+  ensureProperty('x_bgb.dawa.base_url', 'https://api.dataforsyningen.dk', 'Base URL for DAWA (Dataforsyningen)');
+  ensureProperty('x_bgb.dawa.country_allowlist', 'DK', 'Country allowlist for normalization (comma-separated ISO codes)');
+
+  /*****************************************
+   * 2) Fields on cmn_location (idempotent)
+   *****************************************/
+  ensureField('cmn_location','u_dawa_adresse_id','DAWA Adresse ID','string',64);
+  ensureField('cmn_location','u_dawa_adgangsadresse_id','DAWA Adgangsadresse ID','string',64);
+  ensureField('cmn_location','u_kommune_kode','Kommune kode','string',40);
+  ensureField('cmn_location','u_kommune_navn','Kommune navn','string',100);
+
+  /*****************************************
+   * 3) Script Include (v1.1.8)
+   *****************************************/
+  function buildDAWAAddressClient(){
+    return [
+"var DAWAAddressClient = Class.create();",
+"DAWAAddressClient.prototype = {",
+"  initialize: function () {",
+"    this.base = gs.getProperty('x_bgb.dawa.base_url') || 'https://api.dataforsyningen.dk';",
+"    var raw = gs.getProperty('x_bgb.dawa.country_allowlist') || 'DK';",
+"    this.allowlist = raw.split(',').map(function (s) { return (s + '').trim().toUpperCase(); });",
+"  },",
+"  _httpGet: function (url, query) {",
+"    var rm = new sn_ws.RESTMessageV2();",
+"    rm.setEndpoint(url); rm.setHttpMethod('GET'); rm.setRequestHeader('Accept','application/json');",
+"    if (query) { var ks = Object.keys(query); for (var i=0;i<ks.length;i++){ rm.setQueryParameter(ks[i], query[ks[i]]); } }",
+"    var resp = rm.execute(); var code = resp.getStatusCode(); var body = resp.getBody();",
+"    if (code>=200 && code<300){ try{ return JSON.parse(body); }catch(e){ return body; } }",
+"    var em = resp.getErrorMessage && resp.getErrorMessage();",
+"    throw 'DAWA HTTP ' + code + ': ' + (em || body || 'unknown');",
+"  },",
+"  autocomplete: function (q, perSide) {",
+"    if (!q) return []; var url = this.base + '/adresser/autocomplete';",
+"    var data = this._httpGet(url, { q: q, per_side: perSide || 10, struktur: 'mini' });",
+"    return Array.isArray(data) ? data : [];",
+"  },",
+"  searchAddresses: function (q, zip, limit) {",
+"    if (!q) return []; var url = this.base + '/adresser';",
+"    var query = { q: q, per_side: limit || 10 }; if (zip) query.postnr = String(zip);",
+"    var data = this._httpGet(url, query); return Array.isArray(data) ? data : [];",
+"  },",
+"  getAddressById: function (id) { if (!id) return null; return this._httpGet(this.base + '/adresser/' + encodeURIComponent(String(id)), null); },",
+"  getAccessById: function (id)  { if (!id) return null; return this._httpGet(this.base + '/adgangsadresser/' + encodeURIComponent(String(id)), null); },",
+"  _tidy: function (s) { if (!s) return ''; return String(s).replace(/\\s+/g,' ').replace(/\\s+,/g,',').trim(); },",
+"  resolveFromFreeText: function (q, zip) {",
+"    if (!q) return { obj:null, diag:{ q:q, zip:zip, ac:0, sr:0 } };",
+"    var hits=[]; try{ hits=this.autocomplete(q,5)||[]; }catch(e1){ hits=[]; }",
+"    var id=null; if (hits.length){ id = (hits[0].adresse && hits[0].adresse.id) || hits[0].id || hits[0].adresse_id; }",
+"    var list=[]; if (!id){ try{ list=this.searchAddresses(q,zip,10)||[]; }catch(e2){ list=[]; }",
+"      if (list.length){ var pick=null; if (zip){ for (var i=0;i<list.length;i++){ var r=list[i];",
+"        if (r && r.postnummer && String(r.postnummer.nr)===String(zip)) { pick=r; break; }",
+"        if (r && r.postnr && String(r.postnr)===String(zip)) { pick=r; break; } } }",
+"        pick = pick || list[0]; id = pick && (pick.id || pick.adresseid); } }",
+"    var obj=null; if (id){ try{ obj=this.getAddressById(id); }catch(e3){ obj=null; } }",
+"    return { obj:obj, diag:{ q:q, zip:zip, ac:hits.length, sr:list.length, chosen:id } };",
+"  },",
+"  _composeStreet: function (o) {",
+"    var name = (o.vejnavn) || (o.vejstykke && o.vejstykke.navn) || (o.adgangsadresse && o.adgangsadresse.vejstykke && o.adgangsadresse.vejstykke.navn) || '';",
+"    var hus  = (o.husnr) || (o.adgangsadresse && o.adgangsadresse.husnr) || '';",
+"    var door = (o['d\\u00F8r']) || (o.adgangsadresse && o.adgangsadresse['d\\u00F8r']) || '';",
+"    var sup  = (o.supplerendebynavn) || (o.adgangsadresse && o.adgangsadresse.supplerendebynavn) || '';",
+"    var parts=[]; if (name) parts.push(name); if (hus) parts.push(hus); if (door) parts.push(' '+door); if (sup) parts.push(', '+sup);",
+"    return parts.join(' ').replace(/\\s+,/g,',').trim();",
+"  },",
+"  mapToCmnLocation: function (addrObj) {",
+"    if (!addrObj || !addrObj.id) return null; var access = addrObj.adgangsadresse || {};",
+"    var city = (addrObj.postnummer && addrObj.postnummer.navn) || addrObj.postnrnavn || (access.postnummer && access.postnummer.navn) || '';",
+"    var zip  = (addrObj.postnummer && addrObj.postnummer.nr)   || addrObj.postnr     || (access.postnummer && access.postnummer.nr)   || '';",
+"    var res = {",
+"      u_dawa_adresse_id: String(addrObj.id),",
+"      u_dawa_adgangsadresse_id: String(access.id || addrObj.adgangsadresseid || ''),",
+"      street: this._composeStreet(addrObj),",
+"      city: city || '', zip: zip || '', country: 'Denmark',",
+"      latitude: null, longitude: null,",
+"      u_kommune_kode: (access.kommune && access.kommune.kode) || '',",
+"      u_kommune_navn: (access.kommune && access.kommune.navn) || ''",
+"    };",
+"    if (access.koordinater && Array.isArray(access.koordinater) && access.koordinater.length>=2){ res.longitude=access.koordinater[0]; res.latitude=access.koordinater[1]; }",
+"    return res;",
+"  },",
+"  normalizeRecord: function (cmn) {",
+"    try {",
+"      var country = (''+cmn.getValue('country')).toUpperCase();",
+"      if (this.allowlist.indexOf(country)===-1 && country!=='DENMARK' && country!=='DK'){ return {changed:false, reason:'country_not_allowed'}; }",
+"      var street=this._tidy(cmn.isValidField('street') && cmn.getValue('street'));",
+"      var city=this._tidy(cmn.isValidField('city') && cmn.getValue('city'));",
+"      var zip=this._tidy(cmn.isValidField('zip') && cmn.getValue('zip'));",
+"      var q=[street,zip,city].filter(function(s){return s && String(s).trim();}).join(' ');",
+"      var res=null, dawaId=cmn.getValue('u_dawa_adresse_id');",
+"      if (dawaId){ res={ obj:this.getAddressById(dawaId), diag:{ q:q, zip:zip, ac:0, sr:0, chosen:dawaId, mode:'id' } }; }",
+"      else { res=this.resolveFromFreeText(q,zip); }",
+"      if (!res || !res.obj) return {changed:false, reason:'no_match', diag: res ? res.diag : {q:q, zip:zip}};",
+"      var mapped=this.mapToCmnLocation(res.obj); if (!mapped) return {changed:false, reason:'map_failed', diag:res.diag};",
+"      var changed=0; function setIfDiff(f,v){ var curr=cmn.getValue(f), sval=(v==null?'':(''+v)); if(curr!==sval){ cmn.setValue(f,sval); changed++; } }",
+"      function setIfDiffNonEmpty(f,v){ if(v===null || v===undefined || String(v)==='') return; setIfDiff(f,v); }",
+"      setIfDiff('u_dawa_adresse_id', mapped.u_dawa_adresse_id);",
+"      setIfDiff('u_dawa_adgangsadresse_id', mapped.u_dawa_adgangsadresse_id);",
+"      setIfDiffNonEmpty('street', mapped.street);",
+"      setIfDiffNonEmpty('city', mapped.city);",
+"      setIfDiffNonEmpty('zip', mapped.zip);",
+"      setIfDiff('country', mapped.country);",
+"      if (cmn.isValidField('latitude') && mapped.latitude!=null) setIfDiff('latitude', mapped.latitude);",
+"      if (cmn.isValidField('longitude') && mapped.longitude!=null) setIfDiff('longitude', mapped.longitude);",
+"      if (cmn.isValidField('u_kommune_kode')) setIfDiff('u_kommune_kode', mapped.u_kommune_kode);",
+"      if (cmn.isValidField('u_kommune_navn')) setIfDiff('u_kommune_navn', mapped.u_kommune_navn);",
+"      return { changed: changed>0, reason: changed>0 ? 'normalized' : 'already_normalized', diag: res.diag };",
+"    } catch(e){ return { changed:false, reason:'exception:'+e }; }",
+"  },",
+"  type:'DAWAAddressClient'",
+"};"
+    ].join("\n");
+  }
+  ensureScriptInclude('DAWAAddressClient', buildDAWAAddressClient());
+
+  /*****************************************
+   * 4) UI Policy: Country mandatory on form
+   *****************************************/
+  ensureUIPolicy_CountryMandatory();
+
+  /*****************************************
+   * 5) UI Actions on cmn_location
+   *****************************************/
+  var normalizeScript =
+"// Server-side UI Action: DAWA Normalize (stays on record)\\n" +
+"(function(){\\n" +
+"  try{\\n" +
+"    var c = new DAWAAddressClient();\\n" +
+"    var res = c.normalizeRecord(current);\\n" +
+"    // persist changes if any, without workflows/sys fields noise\\n" +
+"    if (res.changed){ current.setWorkflow(false); current.autoSysFields(false); current.update(); }\\n" +
+"    gs.addInfoMessage('DAWA normalize: ' + JSON.stringify(res));\\n" +
+"  } catch(e){ gs.addErrorMessage('DAWA error: ' + e); }\\n" +
+"  // stay on the same record\\n" +
+"  action.setRedirectURL(current); action.setReturnURL(current);\\n" +
+"})();";
+  var r1 = ensureUIAction('cmn_location','x_dawa_normalize','DAWA Normalize', 10, normalizeScript, "true");
+  if (r1==='created') stats.uia_norm_created=true; else if (r1==='updated') stats.uia_norm_updated=true;
+
+  var debugScript =
+"// Server-side UI Action: DAWA Debug Resolve (no save; stays on record)\\n" +
+"(function(){\\n" +
+"  try{\\n" +
+"    var street = current.getValue('street') || '';\\n" +
+"    var zip    = current.getValue('zip') || '';\\n" +
+"    var city   = current.getValue('city') || '';\\n" +
+"    var q = [street, zip, city].filter(function(s){return s && String(s).trim();}).join(' ');\\n" +
+"    var c = new DAWAAddressClient();\\n" +
+"    var res = c.resolveFromFreeText(q, zip);\\n" +
+"    gs.addInfoMessage('DAWA resolve: ' + JSON.stringify(res && res.diag ? res.diag : res));\\n" +
+"  } catch(e){ gs.addErrorMessage('DAWA error: ' + e); }\\n" +
+"  action.setRedirectURL(current); action.setReturnURL(current);\\n" +
+"})();";
+  var r2 = ensureUIAction('cmn_location','x_dawa_debug','DAWA Debug Resolve', 11, debugScript, "true");
+  if (r2==='created') stats.uia_dbg_created=true; else if (r2==='updated') stats.uia_dbg_updated=true;
+
+  /*****************************************
+   * 6) Application Menu + Module (cmn_location.list)
+   *****************************************/
+  ensureAppMenuAndModule();
+
+  /*****************************************
+   * Summary
+   *****************************************/
+  info("Installer v1.2.0 complete", stats);
+  gs.print("DAWA Installer v1.2.0 :: " + JSON.stringify(stats));
+})();
+
+/************************************************************************************************
+ * ============================  Self-Update (Brian fills)  =====================================
+ * var SELF_UPDATE_AUTHOR = "Brian";
+ * var SELF_UPDATE_VERSION = "v1.2.0";
+ * // Instance-specific choices (optional):
+ * // - Add ATF tests, backfill scheduler, or daily status email later on request.
+ ************************************************************************************************/
+```
+
+That’s it. If you want this elevated to an **Update Set** or **Scoped App** next, I can package these artifacts cleanly and include your three documents directly in the app’s “Docs” module.

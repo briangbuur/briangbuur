@@ -1,18 +1,3 @@
-Perfect—here’s a **single, copy-paste Background Script** that installs everything needed on any PDI. It’s **idempotent**, adheres to your conventions, and includes:
-
-* Properties (base URL, allowlist)
-* Custom fields on `cmn_location`
-* Script Include **DAWAAddressClient v1.1.8**
-* UI Policy: **Country mandatory (form only)**
-* Two UI Actions on `cmn_location`:
-
-  * **DAWA Normalize** (saves back to the same record, not list)
-  * **DAWA Debug Resolve** (no save; shows diagnostics and stays on the form)
-* An App Menu **“DAWA Integration”** + Module **“Locations (DAWA)”** → opens `cmn_location.list`
-
-> Drop this into **Scripts → Background** on the target PDI and run.
-
-```javascript
 /***********************************************************************************************
  * DAWA Installer v1.2.0  (Background Script)
  * Business goal: Normalize Danish addresses on cmn_location via DAWA, no-code friendly UX.
@@ -397,9 +382,4 @@ Perfect—here’s a **single, copy-paste Background Script** that installs ever
  * ============================  Self-Update (Brian fills)  =====================================
  * var SELF_UPDATE_AUTHOR = "Brian";
  * var SELF_UPDATE_VERSION = "v1.2.0";
- * // Instance-specific choices (optional):
- * // - Add ATF tests, backfill scheduler, or daily status email later on request.
  ************************************************************************************************/
-```
-
-That’s it. If you want this elevated to an **Update Set** or **Scoped App** next, I can package these artifacts cleanly and include your three documents directly in the app’s “Docs” module.

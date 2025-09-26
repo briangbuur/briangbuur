@@ -382,4 +382,6 @@
  * ============================  Self-Update (Brian fills)  =====================================
  * var SELF_UPDATE_AUTHOR = "Brian";
  * var SELF_UPDATE_VERSION = "v1.2.0";
+ * // Instance-specific choices (optional):
+ * // - Add ATF tests, backfill scheduler, or daily status email later on request.
  ************************************************************************************************/

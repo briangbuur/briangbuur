@@ -1,208 +1,97 @@
-/**************************************************************************************************
- * @name        <YOUR MAIN FIX SCRIPT NAME HERE>
- * @version     1.12
- * @description Your main logic lives above. The self-update footer keeps the record metadata tidy.
- * @author      Brian Gadeberg Buur (Concept) & GPT-5 Thinking (Implementation)
- * @modified    2025-09-26
- * @compat      Zurich, Yokohama, Xanadu
- *
- * -----------------------------------------------------------------------------------------------
- * HOW TO USE
- * 1) Put your business logic in the "MAIN LOGIC" section below.
- * 2) Adjust the "SELF-UPDATE — AUTHORING VARIABLES" in the footer (name, version, logs, etc.).
- * 3) Run. The footer will update this fix script’s record metadata safely and idempotently.
- **************************************************************************************************/
+(function() {
+    // ===== Edit only these two =====
+    var SCRIPT_NAME = "My Final and Correct Script Name v.1223";
+    var SCRIPT_DESCRIPTION = "This text will be copied into the 'description' field of the Fix Script record.";
+    // =================================
 
-/* ================================================================================================
- * MAIN LOGIC (YOUR CODE)
- * ==============================================================================================*/
+    var NAME_MAX = 40; // sys_script_fix.name max length
+    var FPLABEL = "SELF_FINGERPRINT:"; // persisted as a single-line comment in the script
 
-// TODO: put your real fix script logic here.
-// Example:
-(function runMain() {
-  gs.info('[Main] Start main logic…');
-  // … your operations …
-  gs.info('[Main] Done.');
-})();
-
-/* ================================================================================================
- * SELF-UPDATE (v1.12) — DO NOT EDIT BELOW THIS LINE EXCEPT THE AUTHORING VARIABLES
- * ==============================================================================================*/
-
-/*
-  CHANGE HISTORY (keep complete; append new items at the top)
-  - v1.12 (2025-09-26): Hardened search (sys_id→name exact→name like), clearer logs, stricter idempotency,
-                        safer update sequencing, improved header builder, compact flags.
-  - v1.11: Added short_description support and toggle flags per-field.
-  - v1.10: Added compatibility banner (Zurich/Yokohama/Xanadu) and execution metrics.
-  - v1.9 : Stabilized setWorkflow/autoSysFields guards and scope-friendly reads.
-  - v1.8 : Added description header composer + business/technical change logs merge.
-  - v1.7 : Introduced defensive no-op when target cannot be resolved to a single fix script.
-  - v1.6 : Improved logging prefixes; normalized date handling in headers.
-  - v1.5 : Idempotent write strategy (update only if changed).
-  - v1.4 : Introduced strict type checks and null guards.
-  - v1.3 : Reordered operations to avoid mid-transaction noise.
-  - v1.2 : Baseline metadata updater (name + description).
-  - v1.1 : Initial isolation into footer block.
-  - v1.0 : First internal draft.
-*/
-
-(function selfUpdate_v112() {
-  /* ------------------------------
-   * SELF-UPDATE — AUTHORING VARIABLES
-   * ------------------------------*/
-  var SU = {
-    enabled: true,                  // master switch
-    table: 'sys_script_fix',
-    // Target resolution (prefer sys_id when you paste a known one from sys_script_fix)
-    target: {
-      sys_id: '',                   // optional: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
-      nameExact: '<YOUR MAIN FIX SCRIPT NAME HERE>', // expected final name (exact match)
-      nameLike: '<YOUR MAIN FIX SCRIPT NAME HERE>'   // fallback "LIKE" search if needed
-    },
-    // What to update (toggle per field)
-    update: {
-      name: true,
-      short_description: true,
-      description: true
-    },
-    // Header/metadata
-    meta: {
-      name: '<YOUR MAIN FIX SCRIPT NAME HERE>',
-      version: '1.12',
-      author: 'Brian Gadeberg Buur (Concept) & GPT-5 Thinking (Implementation)',
-      modified: '2025-09-26',
-      compat: 'Zurich, Yokohama, Xanadu'
-    },
-    // Descriptions: supply both logs; they’ll be rendered into the header neatly
-    changeLogs: {
-      technical: [
-        'v1.12 – Hardened search, stricter idempotency, improved header builder, safer sequencing.',
-        'v1.11 – Short description support; per-field toggles.'
-      ],
-      business: [
-        'v1.12 – Safer default footer for all PDIs; simpler version bumps; clearer audit trail.',
-        'v1.11 – Titles now meaningful in lists; less noise in updates.'
-      ]
-    },
-    // Short description template (keep concise)
-    shortDescriptionTpl: function (m) {
-      return m.name + ' v' + m.version + ' (' + m.compat + ')';
-    },
-    // Description header builder (keeps your header standardized)
-    buildDescription: function (m, logs) {
-      var lines = [];
-      lines.push('@name ' + m.name);
-      lines.push('@version ' + m.version);
-      lines.push('@description This fix script includes an isolated Self-Update footer that maintains metadata.');
-      lines.push('@author ' + m.author);
-      lines.push('@modified ' + m.modified);
-      lines.push('@compat ' + m.compat);
-      lines.push('');
-      lines.push('=================================================================================================');
-      lines.push(' --- Technical Change Log ---');
-      lines.push('=================================================================================================');
-      for (var i = 0; i < logs.technical.length; i++) lines.push('* ' + logs.technical[i]);
-      lines.push('=================================================================================================');
-      lines.push(' --- Business Change Log ---');
-      lines.push('=================================================================================================');
-      for (var j = 0; j < logs.business.length; j++) lines.push('* ' + logs.business[j]);
-      return lines.join('\n');
-    },
-    // Logging
-    logPrefix: '[SelfUpdate]',
-    // Internal guards
-    _metrics: { start: new Date().getTime() }
-  };
-
-  if (!SU.enabled) {
-    gs.info(SU.logPrefix + ' Disabled. No changes made.');
-    return;
-  }
-
-  function _safeEq(a, b) {
-    return String(a || '') === String(b || '');
-  }
-
-  function _updateIfChanged(gr, field, value) {
-    var oldVal = gr.getValue(field);
-    if (_safeEq(oldVal, value)) return false;
-    gr.setValue(field, value);
-    return true;
-  }
-
-  function _resolveTarget() {
-    var gr = new GlideRecord(SU.table);
-
-    // Priority 1: sys_id
-    if (SU.target.sys_id) {
-      if (gr.get(SU.target.sys_id)) return gr;
-      gs.warn(SU.logPrefix + ' Provided sys_id not found: ' + SU.target.sys_id);
+    function _truncateName(s) {
+        return (s && s.length > NAME_MAX) ? s.substring(0, NAME_MAX) : s;
     }
 
-    // Priority 2: exact name
-    gr.initialize();
-    gr.addQuery('name', SU.target.nameExact);
-    gr.query();
-    if (gr.getRowCount() === 1 && gr.next()) return gr;
+    function _findSelfByFingerprint() {
+        var gr = new GlideRecord('sys_script_fix');
+        gr.addQuery('script', 'CONTAINS', FPLABEL);
+        gr.setLimit(10);
+        gr.query();
+        var results = [];
+        while (gr.next()) results.push(gr.sys_id.toString());
+        if (results.length === 1) {
+            var g = new GlideRecord('sys_script_fix');
+            g.get(results[0]);
+            return g;
+        }
+        return null;
+    }
 
-    // Priority 3: LIKE name
-    gr.initialize();
-    gr.addQuery('name', 'CONTAINS', SU.target.nameLike);
-    gr.query();
-    if (gr.getRowCount() === 1 && gr.next()) return gr;
+    function _findSelfFallback(desiredName) {
+        var gr = new GlideRecord('sys_script_fix');
+        gr.addQuery('name', _truncateName(desiredName));
+        gr.addQuery('script', 'CONTAINS', 'var SCRIPT_NAME =');
+        gr.orderByDesc('sys_updated_on');
+        gr.setLimit(3);
+        gr.query();
+        if (gr.next()) return gr;
 
-    // Ambiguity handling
-    var count = gr.getRowCount();
-    gs.warn(SU.logPrefix + ' Could not uniquely resolve target (count=' + count + '). No changes made.');
-    return null;
-  }
+        var gr2 = new GlideRecord('sys_script_fix');
+        gr2.addQuery('script', 'CONTAINS', 'var SCRIPT_NAME =');
+        gr2.orderByDesc('sys_updated_on');
+        gr2.setLimit(1);
+        gr2.query();
+        if (gr2.next()) return gr2;
 
-  var t0 = new GlideDateTime();
-  var wfWas = GlideRecord.prototype.isWorkflow ? null : null; // placeholder; we control per-record
+        return null;
+    }
 
-  var target = _resolveTarget();
-  if (!target) {
-    gs.info(SU.logPrefix + ' Exit (no unique target).');
-    return;
-  }
+    function _ensureFingerprintPersisted(selfGr) {
+        var body = selfGr.getValue('script') || "";
+        if (body.indexOf(FPLABEL) !== -1) {
+            return true;
+        }
+        var fp = gs.generateGUID();
+        var suffix = "\n// " + FPLABEL + " " + fp + "\n";
+        selfGr.setValue('script', body + suffix);
+        selfGr.update();
+        gs.info("Fix Script: generated and persisted new fingerprint: " + fp);
+        return true;
+    }
 
-  // Build content
-  var shortDesc = SU.shortDescriptionTpl(SU.meta);
-  var desc = SU.buildDescription(SU.meta, SU.changeLogs);
+    try {
+        var selfGr = _findSelfByFingerprint();
+        if (!selfGr) {
+            selfGr = _findSelfFallback(SCRIPT_NAME);
+        }
 
-  // Prepare update
-  var changed = [];
-  target.setWorkflow(false);
-  target.autoSysFields(false);
+        if (!selfGr) {
+            gs.warn("Fix Script: could not uniquely identify the executing script record. Aborting.");
+            return;
+        }
 
-  if (SU.update.name) {
-    if (_updateIfChanged(target, 'name', SU.meta.name)) changed.push('name');
-  }
-  if (SU.update.short_description) {
-    if (_updateIfChanged(target, 'short_description', shortDesc)) changed.push('short_description');
-  }
-  if (SU.update.description) {
-    if (_updateIfChanged(target, 'description', desc)) changed.push('description');
-  }
+        _ensureFingerprintPersisted(selfGr);
 
-  var saved = false;
-  if (changed.length) {
-    saved = target.update() ? true : false;
-  }
+        var desiredName = _truncateName(SCRIPT_NAME);
+        var currName = selfGr.getValue('name') || "";
+        var currDesc = selfGr.getValue('description') || "";
 
-  var ms = new Date().getTime() - SU._metrics.start;
-  if (!changed.length) {
-    gs.info(SU.logPrefix + ' No changes detected. (' + ms + ' ms)');
-  } else if (saved) {
-    gs.info(SU.logPrefix + ' Updated fields: ' + changed.join(', ') + '. (' + ms + ' ms)');
-  } else {
-    gs.warn(SU.logPrefix + ' Attempted to update fields but no row saved (check ACL/scope). (' + ms + ' ms)');
-  }
+        var needsUpdate = false;
+        if (currName !== desiredName) {
+            selfGr.setValue('name', desiredName);
+            needsUpdate = true;
+        }
+        if (currDesc !== SCRIPT_DESCRIPTION) {
+            selfGr.setValue('description', SCRIPT_DESCRIPTION);  // <-- copy description variable here
+            needsUpdate = true;
+        }
 
-  // Final execution stamp
-  gs.info(SU.logPrefix + ' Target: ' + target.getDisplayValue() + ' [' + target.getUniqueValue() + ']');
-  gs.info(SU.logPrefix + ' Version: ' + SU.meta.version + ' | Compat: ' + SU.meta.compat);
-  gs.info(SU.logPrefix + ' Done.');
-
+        if (needsUpdate) {
+            selfGr.update();
+            gs.info('Fix Script: record updated. name="' + desiredName + '", description updated.');
+        } else {
+            gs.info('Fix Script: record already in desired state.');
+        }
+    } catch (e) {
+        gs.error("Fix Script error: " + e.message);
+    }
 })();

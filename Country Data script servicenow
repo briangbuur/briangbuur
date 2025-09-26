@@ -1,0 +1,456 @@
+// ========================================
+// COMPLETE PDI COUNTRY INTEGRATION SCRIPT
+// ========================================
+// This script sets up complete country integration in any ServiceNow PDI
+// Run this in: System Definition > Scripts - Background
+// 
+// What this script creates:
+// 1. Script Include for country integration logic
+// 2. Populates country choice list for cmn_location table
+// 3. Creates scheduled job for ongoing updates
+// 4. Provides verification and testing capabilities
+//
+// Based on: REST Countries API (https://restcountries.com)
+// API Security: HTTPS encrypted, no API keys required, 99.9% uptime
+// ========================================
+
+try {
+    gs.info('🎯 NEXT STEPS:');
+    gs.info('   1. Test the country dropdown in Location forms');
+    gs.info('   2. Navigate to: Configuration > Location > New');
+    gs.info('   3. Check the Country field dropdown');
+    gs.info('   4. Activate scheduled job if you want automatic updates');
+    gs.info('   5. View all countries at: sys_choice_list.do?sysparm_query=nameINjavascript%3AgetTableExtensions(%27cmn_location%27)%5Eelement%3Dcountry');
+    
+    gs.info('');
+    gs.info('🔧 MANUAL TESTING COMMANDS:');
+    gs.info('   Test API: var ci = new CountryIntegration(); ci.testConnection();');
+    gs.info('   Sync Countries: var ci = new CountryIntegration(); ci.syncCountriesToChoiceList();');
+    
+    gs.info('');
+    gs.info('📚 WHAT WAS CREATED:');
+    gs.info('   • CountryIntegration Script Include - Reusable integration logic');
+    gs.info('   • Country choice list with ~250 countries in English');
+    gs.info('   • Scheduled job for weekly updates (inactive by default)');
+    gs.info('   • API error handling and retry logic');
+    gs.info('   • Verification and testing capabilities');
+    
+    gs.info('');
+    gs.info('🌍 API DETAILS:');
+    gs.info('   Source: REST Countries API (restcountries.com)');
+    gs.info('   Security: HTTPS encrypted, no API keys required');
+    gs.info('   Data: ISO-compliant country codes and English names');
+    gs.info('   Reliability: 99.9% uptime, CDN-backed');
+    
+    if (setupResults.scriptInclude && setupResults.choiceList > 200) {
+        gs.info('');
+        gs.info('🎉 SUCCESS! Country integration is ready to use!');
+        gs.info('   Your ServiceNow instance now has a complete country dropdown');
+        gs.info('   with ' + setupResults.choiceList + ' countries in English.');
+    } else {
+        gs.info('');
+        gs.info('⚠️  SETUP INCOMPLETE - Please review errors above');
+    }
+    
+    gs.info('===============================================');
+    
+} catch (error) {
+    gs.error('===============================================');
+    gs.error('CRITICAL ERROR IN DEPLOYMENT SCRIPT');
+    gs.error('===============================================');
+    gs.error('Error message: ' + error.message);
+    gs.error('Error details: ' + error.toString());
+    gs.error('Please contact support or review the script for issues.');
+    gs.error('===============================================');
+}===============================================');
+    gs.info('STARTING COMPLETE COUNTRY INTEGRATION SETUP');
+    gs.info('===============================================');
+    
+    var setupResults = {
+        scriptInclude: false,
+        choiceList: 0,
+        scheduledJob: false,
+        errors: []
+    };
+    
+    // ========================================
+    // STEP 1: CREATE SCRIPT INCLUDE
+    // ========================================
+    gs.info('STEP 1: Creating Country Integration Script Include...');
+    
+    try {
+        var scriptIncludeGR = new GlideRecord('sys_script_include');
+        scriptIncludeGR.addQuery('name', 'CountryIntegration');
+        scriptIncludeGR.query();
+        
+        var siExists = scriptIncludeGR.next();
+        
+        if (!siExists) {
+            scriptIncludeGR = new GlideRecord('sys_script_include');
+            scriptIncludeGR.initialize();
+        }
+        
+        // Script Include code
+        var scriptIncludeCode = "var CountryIntegration = Class.create();\n" +
+            "CountryIntegration.prototype = {\n" +
+            "    initialize: function() {\n" +
+            "        this.apiUrl = 'https://restcountries.com/v3.1/all?fields=name,cca2,cca3,region,subregion,capital';\n" +
+            "        this.backupApiUrl = 'https://restcountries.com/v3.1/all';\n" +
+            "        this.tableName = 'cmn_location';\n" +
+            "        this.maxRetries = 3;\n" +
+            "        this.timeout = 30000;\n" +
+            "    },\n\n" +
+            "    // Main function to sync countries to choice list\n" +
+            "    syncCountriesToChoiceList: function() {\n" +
+            "        try {\n" +
+            "            gs.info('CountryIntegration: Starting country choice list sync');\n" +
+            "            \n" +
+            "            var countries = this.fetchCountriesFromAPI();\n" +
+            "            if (!countries || countries.length === 0) {\n" +
+            "                gs.error('CountryIntegration: No country data received');\n" +
+            "                return {success: false, message: 'No country data received'};\n" +
+            "            }\n\n" +
+            "            var result = this.updateChoiceList(countries);\n" +
+            "            gs.info('CountryIntegration: Successfully processed ' + result.total + ' countries');\n" +
+            "            return result;\n\n" +
+            "        } catch (error) {\n" +
+            "            gs.error('CountryIntegration: Error during sync - ' + error.message);\n" +
+            "            return {success: false, message: error.message};\n" +
+            "        }\n" +
+            "    },\n\n" +
+            "    // Fetch countries from REST API with retry logic\n" +
+            "    fetchCountriesFromAPI: function() {\n" +
+            "        var retryCount = 0;\n" +
+            "        var countries = null;\n\n" +
+            "        while (retryCount < this.maxRetries && !countries) {\n" +
+            "            try {\n" +
+            "                gs.info('CountryIntegration: API call attempt ' + (retryCount + 1));\n" +
+            "                \n" +
+            "                var request = new sn_ws.RESTMessageV2();\n" +
+            "                request.setEndpoint(this.apiUrl);\n" +
+            "                request.setHttpMethod('GET');\n" +
+            "                request.setRequestTimeout(this.timeout);\n" +
+            "                request.setRequestHeader('Accept', 'application/json');\n" +
+            "                request.setRequestHeader('User-Agent', 'ServiceNow-CountryIntegration/1.0');\n" +
+            "                \n" +
+            "                var response = request.execute();\n" +
+            "                var httpStatus = response.getStatusCode();\n" +
+            "                \n" +
+            "                if (httpStatus == 200) {\n" +
+            "                    var responseBody = response.getBody();\n" +
+            "                    countries = this.parseCountryResponse(responseBody);\n" +
+            "                    \n" +
+            "                    if (countries && countries.length > 0) {\n" +
+            "                        gs.info('CountryIntegration: Successfully fetched ' + countries.length + ' countries');\n" +
+            "                        break;\n" +
+            "                    }\n" +
+            "                } else {\n" +
+            "                    gs.warn('CountryIntegration: API returned status ' + httpStatus);\n" +
+            "                }\n\n" +
+            "            } catch (error) {\n" +
+            "                gs.warn('CountryIntegration: API call failed - ' + error.message);\n" +
+            "            }\n" +
+            "            \n" +
+            "            retryCount++;\n" +
+            "            if (retryCount < this.maxRetries && !countries) {\n" +
+            "                gs.info('CountryIntegration: Retrying in 5 seconds...');\n" +
+            "                gs.sleep(5000);\n" +
+            "            }\n" +
+            "        }\n\n" +
+            "        return countries;\n" +
+            "    },\n\n" +
+            "    // Parse REST Countries API response\n" +
+            "    parseCountryResponse: function(responseBody) {\n" +
+            "        try {\n" +
+            "            var data = JSON.parse(responseBody);\n" +
+            "            var countries = [];\n\n" +
+            "            for (var i = 0; i < data.length; i++) {\n" +
+            "                var country = data[i];\n" +
+            "                if (country.name && country.name.common && country.cca2) {\n" +
+            "                    var countryInfo = {\n" +
+            "                        name: country.name.common.replace(/[^\\w\\s\\-\\(\\)\\.]/g, ''),\n" +
+            "                        officialName: country.name.official || country.name.common,\n" +
+            "                        alpha2: country.cca2,\n" +
+            "                        alpha3: country.cca3 || '',\n" +
+            "                        region: country.region || '',\n" +
+            "                        subregion: country.subregion || '',\n" +
+            "                        capital: Array.isArray(country.capital) ? country.capital[0] : (country.capital || '')\n" +
+            "                    };\n" +
+            "                    countries.push(countryInfo);\n" +
+            "                }\n" +
+            "            }\n\n" +
+            "            // Sort countries alphabetically by name\n" +
+            "            countries.sort(function(a, b) {\n" +
+            "                return a.name.localeCompare(b.name);\n" +
+            "            });\n\n" +
+            "            return countries;\n" +
+            "        } catch (error) {\n" +
+            "            gs.error('CountryIntegration: Error parsing response - ' + error.message);\n" +
+            "            return null;\n" +
+            "        }\n" +
+            "    },\n\n" +
+            "    // Update ServiceNow choice list with country data\n" +
+            "    updateChoiceList: function(countries) {\n" +
+            "        var result = {\n" +
+            "            success: true,\n" +
+            "            total: countries.length,\n" +
+            "            added: 0,\n" +
+            "            updated: 0,\n" +
+            "            skipped: 0,\n" +
+            "            errors: 0\n" +
+            "        };\n\n" +
+            "        // Get existing choices\n" +
+            "        var existingChoices = {};\n" +
+            "        var choiceGR = new GlideRecord('sys_choice');\n" +
+            "        choiceGR.addQuery('name', 'IN', 'javascript:getTableExtensions(\"cmn_location\")');\n" +
+            "        choiceGR.addQuery('element', 'country');\n" +
+            "        choiceGR.query();\n" +
+            "        \n" +
+            "        while (choiceGR.next()) {\n" +
+            "            existingChoices[choiceGR.getValue('value')] = {\n" +
+            "                label: choiceGR.getValue('label'),\n" +
+            "                sys_id: choiceGR.getValue('sys_id')\n" +
+            "            };\n" +
+            "        }\n\n" +
+            "        // Process each country\n" +
+            "        for (var i = 0; i < countries.length; i++) {\n" +
+            "            try {\n" +
+            "                var country = countries[i];\n" +
+            "                var countryCode = country.alpha2;\n" +
+            "                var countryName = country.name;\n\n" +
+            "                if (existingChoices[countryCode]) {\n" +
+            "                    // Update if label is different\n" +
+            "                    if (existingChoices[countryCode].label != countryName) {\n" +
+            "                        var updateGR = new GlideRecord('sys_choice');\n" +
+            "                        if (updateGR.get(existingChoices[countryCode].sys_id)) {\n" +
+            "                            updateGR.setValue('label', countryName);\n" +
+            "                            updateGR.update();\n" +
+            "                            result.updated++;\n" +
+            "                        }\n" +
+            "                    } else {\n" +
+            "                        result.skipped++;\n" +
+            "                    }\n" +
+            "                } else {\n" +
+            "                    // Add new country choice\n" +
+            "                    var newChoice = new GlideRecord('sys_choice');\n" +
+            "                    newChoice.initialize();\n" +
+            "                    newChoice.setValue('name', 'cmn_location');\n" +
+            "                    newChoice.setValue('element', 'country');\n" +
+            "                    newChoice.setValue('value', countryCode);\n" +
+            "                    newChoice.setValue('label', countryName);\n" +
+            "                    newChoice.setValue('sequence', (i + 1) * 10);\n" +
+            "                    \n" +
+            "                    var sys_id = newChoice.insert();\n" +
+            "                    if (sys_id) {\n" +
+            "                        result.added++;\n" +
+            "                    } else {\n" +
+            "                        result.errors++;\n" +
+            "                        gs.error('Failed to add: ' + countryCode + ' -> ' + countryName);\n" +
+            "                    }\n" +
+            "                }\n" +
+            "            } catch (error) {\n" +
+            "                result.errors++;\n" +
+            "                gs.error('Error processing country ' + (i+1) + ': ' + error.message);\n" +
+            "            }\n" +
+            "        }\n\n" +
+            "        result.message = 'Added: ' + result.added + ', Updated: ' + result.updated + ', Skipped: ' + result.skipped + ', Errors: ' + result.errors;\n" +
+            "        return result;\n" +
+            "    },\n\n" +
+            "    // Test API connection\n" +
+            "    testConnection: function() {\n" +
+            "        try {\n" +
+            "            var request = new sn_ws.RESTMessageV2();\n" +
+            "            request.setEndpoint('https://restcountries.com/v3.1/alpha?codes=DK,US,GB');\n" +
+            "            request.setHttpMethod('GET');\n" +
+            "            request.setRequestTimeout(10000);\n" +
+            "            \n" +
+            "            var response = request.execute();\n" +
+            "            var status = response.getStatusCode();\n" +
+            "            \n" +
+            "            if (status == 200) {\n" +
+            "                gs.info('CountryIntegration: API connection test successful');\n" +
+            "                return {success: true, message: 'API connection successful'};\n" +
+            "            } else {\n" +
+            "                gs.error('CountryIntegration: API connection failed with status ' + status);\n" +
+            "                return {success: false, message: 'API connection failed with status ' + status};\n" +
+            "            }\n" +
+            "        } catch (error) {\n" +
+            "            gs.error('CountryIntegration: Connection test failed - ' + error.message);\n" +
+            "            return {success: false, message: error.message};\n" +
+            "        }\n" +
+            "    }\n" +
+            "};";\n\n" +
+        
+        scriptIncludeGR.setValue('name', 'CountryIntegration');\n" +
+        scriptIncludeGR.setValue('script', scriptIncludeCode);\n" +
+        scriptIncludeGR.setValue('active', true);\n" +
+        scriptIncludeGR.setValue('access', 'package_private');\n" +
+        scriptIncludeGR.setValue('description', 'Country Integration API - Manages country data from REST Countries API');\n" +
+        \n" +
+        if (siExists) {\n" +
+            gs.info('Updating existing CountryIntegration Script Include...');\n" +
+            scriptIncludeGR.update();\n" +
+        } else {\n" +
+            gs.info('Creating new CountryIntegration Script Include...');\n" +
+            scriptIncludeGR.insert();\n" +
+        }\n" +
+        \n" +
+        setupResults.scriptInclude = true;\n" +
+        gs.info('✓ Script Include created/updated successfully');\n" +
+        \n" +
+    } catch (error) {\n" +
+        setupResults.errors.push('Script Include creation failed: ' + error.message);\n" +
+        gs.error('✗ Script Include creation failed: ' + error.message);\n" +
+    }\n" +
+    \n" +
+    // ========================================\n" +
+    // STEP 2: POPULATE COUNTRY CHOICE LIST\n" +
+    // ========================================\n" +
+    gs.info('STEP 2: Populating Country Choice List...');\n" +
+    \n" +
+    try {\n" +
+        // Use the newly created Script Include\n" +
+        var countryIntegration = new CountryIntegration();\n" +
+        var syncResult = countryIntegration.syncCountriesToChoiceList();\n" +
+        \n" +
+        if (syncResult.success) {\n" +
+            setupResults.choiceList = syncResult.total;\n" +
+            gs.info('✓ Choice List populated: ' + syncResult.message);\n" +
+        } else {\n" +
+            setupResults.errors.push('Choice List population failed: ' + syncResult.message);\n" +
+            gs.error('✗ Choice List population failed: ' + syncResult.message);\n" +
+        }\n" +
+        \n" +
+    } catch (error) {\n" +
+        setupResults.errors.push('Choice List population error: ' + error.message);\n" +
+        gs.error('✗ Choice List population error: ' + error.message);\n" +
+    }\n" +
+    \n" +
+    // ========================================\n" +
+    // STEP 3: CREATE SCHEDULED JOB (OPTIONAL)\n" +
+    // ========================================\n" +
+    gs.info('STEP 3: Creating Scheduled Job for ongoing updates...');\n" +
+    \n" +
+    try {\n" +
+        var scheduledJobGR = new GlideRecord('sysauto_script');\n" +
+        scheduledJobGR.addQuery('name', 'Country Data Sync');\n" +
+        scheduledJobGR.query();\n" +
+        \n" +
+        var jobExists = scheduledJobGR.next();\n" +
+        \n" +
+        if (!jobExists) {\n" +
+            scheduledJobGR = new GlideRecord('sysauto_script');\n" +
+            scheduledJobGR.initialize();\n" +
+        }\n" +
+        \n" +
+        var jobScript = \"// Scheduled Country Integration Update\\n\" +\n" +
+            \"try {\\n\" +\n" +
+            \"    var integration = new CountryIntegration();\\n\" +\n" +
+            \"    var result = integration.syncCountriesToChoiceList();\\n\" +\n" +
+            \"    if (result.success) {\\n\" +\n" +
+            \"        gs.info('Scheduled Country Sync: ' + result.message);\\n\" +\n" +
+            \"    } else {\\n\" +\n" +
+            \"        gs.error('Scheduled Country Sync Failed: ' + result.message);\\n\" +\n" +
+            \"    }\\n\" +\n" +
+            \"} catch (error) {\\n\" +\n" +
+            \"    gs.error('Scheduled Country Sync Error: ' + error.message);\\n\" +\n" +
+            \"}\";\n" +
+        \n" +
+        scheduledJobGR.setValue('name', 'Country Data Sync');\n" +
+        scheduledJobGR.setValue('script', jobScript);\n" +
+        scheduledJobGR.setValue('active', false); // Start inactive for safety\n" +
+        scheduledJobGR.setValue('run_type', 'periodically');\n" +
+        scheduledJobGR.setValue('run_period', '1 week'); // Run weekly\n" +
+        scheduledJobGR.setValue('description', 'Updates country choice list from REST Countries API');\n" +
+        \n" +
+        if (jobExists) {\n" +
+            gs.info('Updating existing Country Data Sync job...');\n" +
+            scheduledJobGR.update();\n" +
+        } else {\n" +
+            gs.info('Creating new Country Data Sync job...');\n" +
+            scheduledJobGR.insert();\n" +
+        }\n" +
+        \n" +
+        setupResults.scheduledJob = true;\n" +
+        gs.info('✓ Scheduled Job created (INACTIVE - activate manually if needed)');\n" +
+        \n" +
+    } catch (error) {\n" +
+        setupResults.errors.push('Scheduled Job creation failed: ' + error.message);\n" +
+        gs.error('✗ Scheduled Job creation failed: ' + error.message);\n" +
+    }\n" +
+    \n" +
+    // ========================================\n" +
+    // STEP 4: VERIFICATION AND TESTING\n" +
+    // ========================================\n" +
+    gs.info('STEP 4: Running verification tests...');\n" +
+    \n" +
+    try {\n" +
+        // Test API connection\n" +
+        var testIntegration = new CountryIntegration();\n" +
+        var connectionTest = testIntegration.testConnection();\n" +
+        \n" +
+        if (connectionTest.success) {\n" +
+            gs.info('✓ API Connection Test: PASSED');\n" +
+        } else {\n" +
+            gs.warn('⚠ API Connection Test: FAILED - ' + connectionTest.message);\n" +
+        }\n" +
+        \n" +
+        // Verify choice list\n" +
+        var verifyGR = new GlideRecord('sys_choice');\n" +
+        verifyGR.addQuery('name', 'IN', 'javascript:getTableExtensions(\"cmn_location\")');\n" +
+        verifyGR.addQuery('element', 'country');\n" +
+        verifyGR.query();\n" +
+        \n" +
+        var choiceCount = 0;\n" +
+        var dkFound = false;\n" +
+        var sampleCountries = [];\n" +
+        \n" +
+        while (verifyGR.next()) {\n" +
+            choiceCount++;\n" +
+            var value = verifyGR.getValue('value');\n" +
+            var label = verifyGR.getValue('label');\n" +
+            \n" +
+            if (value === 'DK') {\n" +
+                dkFound = true;\n" +
+            }\n" +
+            \n" +
+            if (sampleCountries.length < 5) {\n" +
+                sampleCountries.push(value + ' -> ' + label);\n" +
+            }\n" +
+        }\n" +
+        \n" +
+        gs.info('Total countries in choice list: ' + choiceCount);\n" +
+        gs.info('Denmark (DK) found: ' + (dkFound ? 'YES' : 'NO'));\n" +
+        gs.info('Sample countries: ' + sampleCountries.join(', '));\n" +
+        \n" +
+        if (choiceCount >= 240 && dkFound) {\n" +
+            gs.info('✓ Choice List Verification: PASSED');\n" +
+        } else {\n" +
+            gs.warn('⚠ Choice List Verification: Issues detected');\n" +
+        }\n" +
+        \n" +
+    } catch (error) {\n" +
+        gs.error('✗ Verification failed: ' + error.message);\n" +
+    }\n" +
+    \n" +
+    // ========================================\n" +
+    // FINAL SUMMARY\n" +
+    // ========================================\n" +
+    gs.info('===============================================');\n" +
+    gs.info('COUNTRY INTEGRATION SETUP COMPLETE');\n" +
+    gs.info('===============================================');\n" +
+    \n" +
+    gs.info('📊 SETUP RESULTS:');\n" +
+    gs.info('   Script Include: ' + (setupResults.scriptInclude ? '✓ Created' : '✗ Failed'));\n" +
+    gs.info('   Country Choices: ' + setupResults.choiceList + ' countries');\n" +
+    gs.info('   Scheduled Job: ' + (setupResults.scheduledJob ? '✓ Created (inactive)' : '✗ Failed'));\n" +
+    gs.info('   Errors: ' + setupResults.errors.length);\n" +
+    \n" +
+    if (setupResults.errors.length > 0) {\n" +
+        gs.info('❌ ERRORS ENCOUNTERED:');\n" +
+        for (var e = 0; e < setupResults.errors.length; e++) {\n" +
+            gs.error('   ' + (e+1) + '. ' + setupResults.errors[e]);\n" +
+        }\n" +
+    }\n" +
+    \n" +
+    gs.info('

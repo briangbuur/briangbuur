@@ -2,6 +2,7 @@
 * SCRIPT: All-Inclusive Country Integration Setup (v2.01 - Polished)
 * Formål: Opretter integrationsbruger OG udfører hele integrationen i korrekt kontekst.
 * Fjerner nu også irrelevante demo-værdier (edu_status) sat af PDI.
+* Kør dette ene script som administrator. Ingen impersonering er nødvendig.
 ****************************************************************************************/
 try {
     gs.info('### ORCHESTRATOR: Starting All-Inclusive Setup ###');
@@ -18,9 +19,9 @@ try {
         userGR.setValue('last_name', 'Countries API');
         userGR.setValue('web_service_access_only', true);
         userGR.setValue('internal_integration_user', true);
-        userGR.setValue('notification', 2);
+        userGR.setValue('notification', 2); // 2 = Disable notifications
         userGR.setValue('source', 'Integration: REST Countries API (Scripted)');
-        userGR.setValue('edu_status', ''); // <-- NY LINJE: Nulstil PDI demo-værdi for at sikre en ren record.
+        userGR.setValue('edu_status', ''); // Nulstil PDI demo-værdi for at sikre en ren record.
 
         var tempPassword = new GlideSecureRandomUtil().getSecureRandomString(16);
         userGR.setUserPassword(tempPassword);
@@ -31,7 +32,7 @@ try {
         userGR.setValue('internal_integration_user', true);
         userGR.setValue('notification', 2);
         userGR.setValue('source', 'Integration: REST Countries API (Scripted)');
-        userGR.setValue('edu_status', ''); // <-- NY LINJE: Nulstil PDI demo-værdi for at sikre en ren record.
+        userGR.setValue('edu_status', ''); // Nulstil PDI demo-værdi for at sikre en ren record.
         userGR.update();
     }
 

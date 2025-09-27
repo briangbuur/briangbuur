@@ -1,73 +1,110 @@
-Selvfølgelig. Her er den endelige dokumentation igen, fuldstændig renset for systemkoder.
+### **ServiceNow Country Integration - Komplet Dokumentation (v3.0 - Detaljeret)**
 
----
-### **ServiceNow Country Integration - Komplet Dokumentation (v2.1 - Final)**
+### **Sektion 1: Teknisk Dokumentation**
 
-#### **Sektion 1: Teknisk Dokumentation**
+#### **Oversigt**
+The Clean PDI Country Integration Script giver en fuldautomatiseret population af ServiceNow's lokationstabel (`cmn_location`) med lande-valglister ved hjælp af REST Countries API'et. Løsningen opretter en sikker integrationsbruger, et genanvendeligt Script Include, og automatiske jobs til både synkronisering og overvågning.
 
-##### **Oversigt**
-Denne løsning giver en fuldautomatiseret integration til at udfylde lande-valglister i ServiceNow. Løsningen opretter en sikker, dedikeret integrationsbruger, en genanvendelig `Script Include` til logikken, og et ugentligt job til at overvåge datakvaliteten. Hele opsætningen udføres af ét enkelt 'All-Inclusive'-script.
+#### **Arkitektur Komponenter**
+**1. All-Inclusive Installationsscript**
+* **Formål**: Et 'dirigent'-script (version v3.00), der automatiserer hele opsætningen i én kørsel.
+* **Funktion**: Opretter de nedenstående komponenter og sikrer korrekt ejerskab og sporbarhed.
 
-##### **Ekstern API: REST Countries**
-Løsningen er afhængig af det gratis og åbne REST Countries API for at hente opdaterede landedata.
-* **API Hjemmeside**: `https://restcountries.com/`
-* **Dokumentation**: `https://restcountries.com/` (Hjemmesiden fungerer som den primære dokumentation)
+**2. Integration User**
+* **Navn**: `integration.countries`
+* **Formål**: En dedikeret systembruger, der ejer og eksekverer al integration.
+* **Sikkerhed**: Konfigureret med `web_service_access_only` og `internal_integration_user`. Adgangskode er ukendt.
+* **Rettigheder**: `rest_service`, `personalize_choices`.
+
+**3. CountryIntegration Script Include**
+* **Klasse**: `CountryIntegration`
+* **Access Level**: `package_private`
+* **Dependencies**: `sn_ws.RESTMessageV2`, `GlideRecord`
+
+**4. Scheduled Job (Ugentlig Datasynkronisering)**
+* **Navn**: `Country Data Nightly Sync`
+* **Formål**: Henter nye og opdaterer eksisterende landedata fra REST Countries API'et.
+* **Eksekvering**: Hver lørdag kl. 04:00.
+
+**5. Scheduled Job (Ugentlig Kvalitetskontrol)**
+* **Navn**: `Country Data Consistency Check`
+* **Formål**: Overvåger datakvaliteten af de eksisterende lande.
+* **Eksekvering**: Hver mandag kl. 02:00.
+
+#### **Ekstern API: REST Countries**
+* **API Hjemmeside & Dokumentation**: `https://restcountries.com/`
 * **Endpunkt brugt**: `https://restcountries.com/v3.1/all?fields=name,cca2`
-* **Autentificering**: Kræver ingen API-nøgle eller login.
 
-##### **Arkitektur og Oprettede Komponenter**
-Installationsscriptet opretter og konfigurerer følgende komponenter i ServiceNow-instansen:
+#### **Data Model & Skemaer**
+* **Country Object Schema**: `{ name: String, code: String }`
+* **Choice List Schema**:
+    * **Tabel**: `sys_choice`
+    * **Name**: `cmn_location`
+    * **Element**: `country`
+    * **Value**: ISO alpha-2 code (f.eks., "DK", "US")
+    * **Label**: Fuldt landenavn (f.eks., "Denmark", "United States")
 
-**1. Integration User**
-* **Navn i systemet**: `integration.countries`
-* **Formål**: En dedikeret systembruger, der ejer og eksekverer alle dele af integrationen for at sikre fuld sporbarhed.
-* **Rettigheder**: Scriptet tildeler kun rollerne `rest_service` og `personalize_choices`. *Bemærk: I PDI-miljøer kan systemet automatisk tildele ekstra standard-roller som `snc_internal`.*
-
-**2. Script Include**
-* **Navn i systemet**: `CountryIntegration`
-* **Formål**: Indeholder al den genanvendelige JavaScript-logik til at hente, parse og indsætte landedata fra API'et.
-
-**3. Scheduled Job**
-* **Navn i systemet**: `Country Data Consistency Check`
-* **Formål**: Et ugentligt job, der **overvåger** datakvaliteten. Det henter **ikke** nye data.
-* **Eksekvering**: Kører hver mandag kl. 02:00 som `integration.countries`-brugeren.
-
-**4. System Properties (Overvågning)**
-* **Navne i systemet**: `country.check.last_run`, `country.check.total`, `country.check.issues`, `country.check.quality_score`
-* **Formål**: Gemmer resultater fra det ugentlige kvalitets-job, så de let kan bruges til dashboards.
-
-**5. Choice List Records (Lande-data)**
-* **Antal**: Ca. 250 records i `sys_choice`-tabellen.
-* **Formål**: Selve landene, der vises i dropdown-menuen.
+#### **Tekniske Specifikationer**
+* **API Integration**: HTTPS REST, 30 sekunders timeout, ingen retry-logik.
+* **Databehandling**: Sortering alfabetisk, deduplikering baseret på landekode.
+* **Database Operationer**: `GlideRecord.insert()`, `GlideRecord.update()`.
+* **Performance**: ~30-60 sekunders initial kørsel. Trigger `sys_choice` cache flush.
+* **Sikkerhed**: Kører som dedikeret bruger. Kræver udgående HTTPS (port 443) til `restcountries.com`.
 
 ---
-#### **Sektion 2: Step-by-Step Brugerguide**
+### **Sektion 2: Step-by-Step Brugerguide**
 
-##### **Forudsætninger**
+#### **Forudsætninger**
 * ServiceNow `admin`-rettigheder.
 * Adgang til "System Definition > Scripts - Background".
-* Udgående internetforbindelse fra ServiceNow-instansen.
+* Udgående internetforbindelse til `restcountries.com`.
 
-##### **Installationsprocedure**
-1.  **Kør All-Inclusive Scriptet**: Naviger til `System Definition > Scripts - Background`, indsæt 'All-Inclusive Country Integration Script (v2.01)', og klik **"Run script"**.
-2.  **Verificer Success**: Tjek loggen for `ORCHESTRATOR`- og `INTEGRATION JOB`-beskeder.
-3.  **Test Integrationen**: Gå til `Locations > All` og opret en ny lokation for at teste **Country**-feltet.
+#### **Installationsprocedure**
+**Trin 1: Kør All-Inclusive Scriptet**
+1.  Naviger til `System Definition > Scripts - Background`.
+2.  Kopier **hele** 'All-Inclusive Country Integration Script (v3.00)' ind i tekstfeltet.
+3.  Klik på knappen **"Run script"**.
+4.  Vent på, at scriptet fuldfører. Følg status i log-outputtet nederst på siden.
 
-##### **Vedligeholdelse og Datasynkronisering**
-* **Éngangs-dataindlæsning**: Landedata indlæses **kun én gang** under den indledende installation.
-* **Løbende Overvågning**: Det ugentlige job sikrer løbende overvågning af datakvaliteten. Det synkroniserer **ikke** data. Resultater kan ses i `System Properties`.
-* **Manuel Opdatering**: For at opdatere landelisten i fremtiden (f.eks. om et år), skal 'All-Inclusive'-scriptet køres igen. Scriptet er bygget til at håndtere dette uden at skabe dubletter.
+**Trin 2: Verificer Success**
+1.  **I loggen fra scriptet**, se efter disse bekræftelser:
+    * `### ORCHESTRATOR: User setup complete...`
+    * `### ORCHESTRATOR: Job triggered...`
+2.  **Gå til `System Logs > System Log > All`** og filtrer på beskeder, der starter med `### INTEGRATION JOB`. Her bør du se bekræftelser på, at de enkelte dele er oprettet.
+
+**Trin 3: Test Integrationen**
+1.  Gå til `Locations > All` (eller `Configuration > Location`) og opret en ny lokation for at teste.
+2.  Klik på dropdown-menuen for **Country**-feltet.
+3.  Bekræft at listen nu indeholder ca. 250 lande, sorteret alfabetisk.
+
+#### **Vedligeholdelse og Datasynkronisering**
+* **Automatisk Synkronisering**: Landedata bliver automatisk opdateret hver lørdag nat via `Country Data Nightly Sync`-jobbet.
+* **Løbende Overvågning**: Det ugentlige `Country Data Consistency Check`-job sikrer løbende overvågning.
+* **Manuel Kørsel**: 'All-Inclusive'-scriptet kan køres igen manuelt, hvis en øjeblikkelig opdatering er nødvendig.
 
 ---
-#### **Sektion 3: Forbedringer og Fremtidige Muligheder**
+### **Sektion 3: Forbedringer**
 
-##### **Implementerede Forbedringer (Status: Fuldført)**
+#### **Implementerede Forbedringer (Status: Fuldført)**
+Denne løsning er blevet markant forbedret til at inkludere følgende enterprise-grade features:
 * **Sikkerhed & Identitet**: Dedikeret, sikker integrationsbruger med korrekt licenshåndtering.
-* **Arkitektur**: Fuldautomatiseret én-kliks udførelse.
+* **Arkitektur**: Fuldautomatiseret én-kliks installation via et 'dirigent'-script.
 * **Sporbarhed**: Korrekt data-ejerskab og en ren, veldokumenteret bruger-record.
 * **Drift & Overvågning**: Indbygget ugentligt job til proaktiv kvalitetsovervågning.
+* **Automatisk Datasynkronisering**: Ugentligt job til at holde landedata opdateret.
 
-##### **Fremtidige Forbedringsmuligheder**
-* **Automatisk Synkronisering**: Udvid det ugentlige job til ikke kun at overvåge, men også at køre en fuld synkronisering for at hente nye lande og opdatere navneændringer.
-* **Konfigurationsstyring**: Flyt variable som API-URL og timeout-værdier til System Properties.
-* **UI til Administration**: Byg en simpel brugerflade, hvor en administrator kan starte en synkronisering manuelt og se status.
+#### **Fremtidige Forbedringsmuligheder (Roadmap)**
+**Fase 1 (Vigtigt)**
+* **Forbedret Fejlhåndtering**: Implementer retry-logik med eksponentiel backoff. Tilføj specifikke fejlkoder og fallback til en statisk liste.
+* **Data Validering**: Validering af navnelængde og ISO-kode format. Filtrering af ugyldige tegn.
+* **Backup & Gendannelse**: Eksporter den nuværende liste før opdatering. Indbyg et-kliks rollback-funktionalitet.
+
+**Fase 2 (Vigtigt)**
+* **Inkrementelle Opdateringer**: Sammenlign API-data med eksisterende records og opdater kun ændrede lande.
+* **Konfigurationsstyring**: Flyt variable som API URL, timeout og tabelnavne til System Properties.
+* **Performance Optimering**: Anvend batch-indsættelse af records.
+
+**Fase 3 (Rart at have)**
+* **Multisprogs-understøttelse**: Brug ServiceNow's oversættelses-framework til at vise landenavne baseret på brugerens sprog.
+* **Monitoring Dashboard**: Byg et dashboard, der visualiserer data fra de System Properties, som overvågningsjobbet opretter.
+* **Avanceret UI**: En admin-grænseflade til konfiguration og manuel start af synkronisering.

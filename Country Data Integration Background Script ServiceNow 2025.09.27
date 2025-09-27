@@ -1,17 +1,20 @@
-// Clean PDI Country Integration Script
+// Complete PDI Country Integration Solution
 // Execute in: System Definition > Scripts - Background
-// This creates complete country integration for any fresh ServiceNow PDI
+// This creates everything needed for country integration in a clean PDI
 
 try {
-    gs.info('=== Starting Country Integration Setup ===');
+    gs.info('=== Starting Complete Country Integration Setup ===');
     
     var setupResults = {
         scriptInclude: false,
         countries: 0,
+        scheduledJob: false,
         errors: []
     };
     
-    // Step 1: Create Script Include
+    // ==========================================
+    // STEP 1: CREATE COUNTRY INTEGRATION SCRIPT INCLUDE
+    // ==========================================
     gs.info('Step 1: Creating CountryIntegration Script Include...');
     
     try {
@@ -117,6 +120,7 @@ try {
         siGR.setValue('script', scriptCode);
         siGR.setValue('active', true);
         siGR.setValue('access', 'package_private');
+        siGR.setValue('description', 'Country integration for location dropdowns using REST Countries API');
         
         if (exists) {
             siGR.update();
@@ -125,26 +129,28 @@ try {
         }
         
         setupResults.scriptInclude = true;
-        gs.info('Script Include created successfully');
+        gs.info('CountryIntegration Script Include created');
         
     } catch (error) {
         setupResults.errors.push('Script Include error: ' + error.message);
         gs.error('Script Include failed: ' + error.message);
     }
     
-    // Step 2: Populate Countries
-    gs.info('Step 2: Populating countries...');
+    // ==========================================
+    // STEP 2: POPULATE COUNTRIES FROM API
+    // ==========================================
+    gs.info('Step 2: Populating countries from REST Countries API...');
     
     try {
         var integration = new CountryIntegration();
         var syncResult = integration.syncCountries();
         
-        if (syncResult.success) {
+        if (syncResult && syncResult.success) {
             setupResults.countries = syncResult.added || 0;
             gs.info('Country sync successful: ' + syncResult.message);
         } else {
-            setupResults.errors.push('Country sync failed: ' + syncResult.message);
-            gs.error('Country sync failed: ' + syncResult.message);
+            setupResults.errors.push('Country sync failed: ' + (syncResult ? syncResult.message : 'Unknown error'));
+            gs.error('Country sync failed');
         }
         
     } catch (error) {
@@ -152,8 +158,97 @@ try {
         gs.error('Country sync error: ' + error.message);
     }
     
-    // Step 3: Verification
-    gs.info('Step 3: Verification...');
+    // ==========================================
+    // STEP 3: CREATE SCHEDULED CONSISTENCY CHECK
+    // ==========================================
+    gs.info('Step 3: Creating scheduled consistency check job...');
+    
+    try {
+        var jobGR = new GlideRecord('sysauto_script');
+        jobGR.addQuery('name', 'Country Data Consistency Check');
+        jobGR.query();
+        
+        var jobExists = jobGR.next();
+        if (!jobExists) {
+            jobGR = new GlideRecord('sysauto_script');
+            jobGR.initialize();
+        }
+        
+        var consistencyScript = 'try {\n';
+        consistencyScript += '    gs.info("=== Country Consistency Check ===");\n';
+        consistencyScript += '    var choiceGR = new GlideRecord("sys_choice");\n';
+        consistencyScript += '    choiceGR.addQuery("name", "cmn_location");\n';
+        consistencyScript += '    choiceGR.addQuery("element", "country");\n';
+        consistencyScript += '    choiceGR.query();\n';
+        consistencyScript += '    var total = 0;\n';
+        consistencyScript += '    var issues = 0;\n';
+        consistencyScript += '    var duplicates = {};\n';
+        consistencyScript += '    var dkFound = false;\n';
+        consistencyScript += '    while (choiceGR.next()) {\n';
+        consistencyScript += '        total++;\n';
+        consistencyScript += '        var code = choiceGR.getValue("value");\n';
+        consistencyScript += '        var name = choiceGR.getValue("label");\n';
+        consistencyScript += '        if (code === "DK") dkFound = true;\n';
+        consistencyScript += '        if (!code || code.length !== 2 || !/^[A-Z]{2}$/.test(code)) {\n';
+        consistencyScript += '            issues++;\n';
+        consistencyScript += '            gs.warn("Invalid code: " + code + " (" + name + ")");\n';
+        consistencyScript += '        }\n';
+        consistencyScript += '        if (duplicates[code]) {\n';
+        consistencyScript += '            issues++;\n';
+        consistencyScript += '            gs.warn("Duplicate: " + code);\n';
+        consistencyScript += '        }\n';
+        consistencyScript += '        duplicates[code] = true;\n';
+        consistencyScript += '        if (!choiceGR.getValue("sequence")) {\n';
+        consistencyScript += '            issues++;\n';
+        consistencyScript += '            gs.warn("Missing sequence: " + code);\n';
+        consistencyScript += '        }\n';
+        consistencyScript += '    }\n';
+        consistencyScript += '    var qualityScore = total > 0 ? Math.round(((total - issues) / total) * 100) : 0;\n';
+        consistencyScript += '    gs.info("Countries: " + total + ", Issues: " + issues + ", Quality: " + qualityScore + "%");\n';
+        consistencyScript += '    gs.info("Denmark available: " + (dkFound ? "Yes" : "No"));\n';
+        consistencyScript += '    gs.setProperty("country.check.last_run", gs.nowDateTime());\n';
+        consistencyScript += '    gs.setProperty("country.check.total", total);\n';
+        consistencyScript += '    gs.setProperty("country.check.issues", issues);\n';
+        consistencyScript += '    gs.setProperty("country.check.quality_score", qualityScore);\n';
+        consistencyScript += '    if (issues === 0) {\n';
+        consistencyScript += '        gs.info("SUCCESS: No consistency issues found");\n';
+        consistencyScript += '    } else if (issues <= 10) {\n';
+        consistencyScript += '        gs.info("MINOR: " + issues + " issues found - review recommended");\n';
+        consistencyScript += '    } else {\n';
+        consistencyScript += '        gs.warn("MAJOR: " + issues + " issues found - immediate attention required");\n';
+        consistencyScript += '    }\n';
+        consistencyScript += '} catch (error) {\n';
+        consistencyScript += '    gs.error("Consistency check error: " + error.message);\n';
+        consistencyScript += '    gs.setProperty("country.check.last_error", error.message);\n';
+        consistencyScript += '}';
+        
+        jobGR.setValue('name', 'Country Data Consistency Check');
+        jobGR.setValue('script', consistencyScript);
+        jobGR.setValue('active', true);
+        jobGR.setValue('run_type', 'periodically');
+        jobGR.setValue('run_period', '604800'); // 1 week in seconds
+        jobGR.setValue('run_dayofweek', '1'); // Monday
+        jobGR.setValue('run_time', '02:00:00');
+        jobGR.setValue('description', 'Weekly country data consistency check for location choice list');
+        
+        if (jobExists) {
+            jobGR.update();
+        } else {
+            jobGR.insert();
+        }
+        
+        setupResults.scheduledJob = true;
+        gs.info('Scheduled consistency check created');
+        
+    } catch (error) {
+        setupResults.errors.push('Scheduled job error: ' + error.message);
+        gs.error('Scheduled job failed: ' + error.message);
+    }
+    
+    // ==========================================
+    // STEP 4: VERIFICATION AND TESTING
+    // ==========================================
+    gs.info('Step 4: Running verification...');
     
     var verifyGR = new GlideRecord('sys_choice');
     verifyGR.addQuery('name', 'cmn_location');
@@ -162,36 +257,72 @@ try {
     
     var totalCount = 0;
     var dkFound = false;
+    var invalidCount = 0;
     
     while (verifyGR.next()) {
         totalCount++;
-        if (verifyGR.getValue('value') === 'DK') {
+        var value = verifyGR.getValue('value');
+        
+        if (value === 'DK') {
             dkFound = true;
+        }
+        
+        if (!value || value.length !== 2 || !/^[A-Z]{2}$/.test(value)) {
+            invalidCount++;
         }
     }
     
-    // Final Results
-    gs.info('=== SETUP COMPLETE ===');
+    // ==========================================
+    // FINAL RESULTS AND SUMMARY
+    // ==========================================
+    gs.info('=== COMPLETE COUNTRY INTEGRATION SETUP RESULTS ===');
     gs.info('Script Include: ' + (setupResults.scriptInclude ? 'Created' : 'Failed'));
     gs.info('Countries added: ' + setupResults.countries);
+    gs.info('Scheduled job: ' + (setupResults.scheduledJob ? 'Created' : 'Failed'));
     gs.info('Total countries in system: ' + totalCount);
+    gs.info('Invalid format countries: ' + invalidCount);
     gs.info('Denmark (DK) available: ' + (dkFound ? 'Yes' : 'No'));
-    gs.info('Errors: ' + setupResults.errors.length);
+    gs.info('Setup errors: ' + setupResults.errors.length);
     
     if (setupResults.errors.length > 0) {
+        gs.info('=== ERRORS ENCOUNTERED ===');
         for (var e = 0; e < setupResults.errors.length; e++) {
             gs.error('Error ' + (e + 1) + ': ' + setupResults.errors[e]);
         }
     }
     
-    if (setupResults.scriptInclude && totalCount > 200) {
-        gs.info('SUCCESS: Country integration is ready!');
-        gs.info('Test: Go to Configuration > Location > New');
-        gs.info('Check the Country dropdown field');
+    gs.info('=== MONITORING PROPERTIES CREATED ===');
+    gs.info('- country.check.last_run (timestamp)');
+    gs.info('- country.check.total (country count)');
+    gs.info('- country.check.issues (issue count)');
+    gs.info('- country.check.quality_score (percentage)');
+    
+    gs.info('=== NEXT STEPS ===');
+    gs.info('1. Test: Go to Configuration > Location > New');
+    gs.info('2. Check the Country dropdown field');
+    gs.info('3. Verify ~250 countries are available');
+    gs.info('4. Confirm Denmark appears in the list');
+    gs.info('5. Monitor: System Scheduler > Scheduled Jobs');
+    gs.info('6. Review: System Properties for monitoring data');
+    
+    if (setupResults.scriptInclude && totalCount > 200 && dkFound) {
+        gs.info('=== SUCCESS ===');
+        gs.info('Complete country integration is ready for use!');
+        gs.info('The system includes:');
+        gs.info('- ' + totalCount + ' countries in dropdown');
+        gs.info('- Reusable CountryIntegration class');
+        gs.info('- Weekly automated consistency monitoring');
+        gs.info('- System properties for dashboard creation');
     } else {
-        gs.info('Issues detected - review errors above');
+        gs.warn('=== SETUP INCOMPLETE ===');
+        gs.warn('Some components may need manual review');
+        gs.warn('Check errors above and verify API connectivity');
     }
     
+    gs.info('=== SETUP COMPLETE ===');
+    
 } catch (error) {
-    gs.error('CRITICAL ERROR: ' + error.message);
+    gs.error('=== CRITICAL SETUP ERROR ===');
+    gs.error('Error: ' + error.message);
+    gs.error('Details: ' + error.toString());
 }

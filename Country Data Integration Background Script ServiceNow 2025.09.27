@@ -1,42 +1,39 @@
 /****************************************************************************************
-* SCRIPT: All-Inclusive Country Integration Setup (v2.01 - Polished)
-* Formål: Opretter integrationsbruger OG udfører hele integrationen i korrekt kontekst.
-* Fjerner nu også irrelevante demo-værdier (edu_status) sat af PDI.
-* Kør dette ene script som administrator. Ingen impersonering er nødvendig.
+* SCRIPT: Country Integration Installation (v5.0)
+* Formål: Opretter alle komponenter (bruger, SI, jobs) som admin og starter
+* den indledende datasynkronisering som integrationsbrugeren.
 ****************************************************************************************/
-try {
-    gs.info('### ORCHESTRATOR: Starting All-Inclusive Setup ###');
+(function() {
+    gs.info('### SETUP (v5.0): Starting Installation ###');
 
     // ===== Trin 1: Opret den sikre integrationsbruger =====
     var userSysId;
     var userName = 'integration.countries';
     var userGR = new GlideRecord('sys_user');
     if (!userGR.get('user_name', userName)) {
-        gs.info("--> Creating user: " + userName);
+        gs.info('--> Creating user: ' + userName);
         userGR.initialize();
         userGR.setValue('user_name', userName);
         userGR.setValue('first_name', 'Integration');
         userGR.setValue('last_name', 'Countries API');
         userGR.setValue('web_service_access_only', true);
         userGR.setValue('internal_integration_user', true);
-        userGR.setValue('notification', 2); // 2 = Disable notifications
+        userGR.setValue('notification', 2);
         userGR.setValue('source', 'Integration: REST Countries API (Scripted)');
-        userGR.setValue('edu_status', ''); // Nulstil PDI demo-værdi for at sikre en ren record.
-
+        userGR.setValue('edu_status', '');
         var tempPassword = new GlideSecureRandomUtil().getSecureRandomString(16);
         userGR.setUserPassword(tempPassword);
         userSysId = userGR.insert();
     } else {
-        gs.info("--> User " + userName + " already exists. Updating fields...");
+        gs.info('--> User ' + userName + ' already exists. Updating and using existing user.');
         userSysId = userGR.getUniqueValue();
         userGR.setValue('internal_integration_user', true);
         userGR.setValue('notification', 2);
         userGR.setValue('source', 'Integration: REST Countries API (Scripted)');
-        userGR.setValue('edu_status', ''); // Nulstil PDI demo-værdi for at sikre en ren record.
+        userGR.setValue('edu_status', '');
         userGR.update();
     }
 
-    // Tildel nødvendige roller
     var rolesToAssign = ['rest_service', 'personalize_choices'];
     for (var i = 0; i < rolesToAssign.length; i++) {
         var roleName = rolesToAssign[i];
@@ -51,90 +48,85 @@ try {
             if (roleRecord.get('name', roleName)) {
                 newRole.setValue('role', roleRecord.getUniqueValue());
                 newRole.insert();
-                gs.info("--> Role '" + roleName + "' assigned.");
+                gs.info('--> Role "' + roleName + '" assigned.');
             }
         }
     }
-    gs.info('### ORCHESTRATOR: User setup complete. Preparing integration job. ###');
+    gs.info('--> User setup complete.');
 
+    // ===== Trin 2: Opret/opdater Script Include =====
+    gs.info('--> Creating/updating Script Include: CountryIntegration');
+    var siGR = new GlideRecord('sys_script_include');
+    siGR.addQuery('name', 'CountryIntegration');
+    siGR.query();
+    var siExists = siGR.next();
+    if (!siExists) { siGR.initialize(); }
+    var scriptCode = 'var CountryIntegration = Class.create();\n' +
+        'CountryIntegration.prototype = {\n' +
+        '    initialize: function() { this.apiUrl = "https://restcountries.com/v3.1/all?fields=name,cca2"; this.tableName = "cmn_location"; this.timeout = 30000; },\n' +
+        '    syncCountries: function() { try { gs.info("CountryIntegration: Starting sync"); var countries = this.fetchCountries(); if (!countries) { return {success: false, message: "No data received"}; } return this.updateChoices(countries); } catch (error) { return {success: false, message: error.message}; } },\n' +
+        '    fetchCountries: function() { try { var request = new sn_ws.RESTMessageV2(); request.setEndpoint(this.apiUrl); request.setHttpMethod("GET"); request.setRequestTimeout(this.timeout); var response = request.execute(); if (response.getStatusCode() == 200) { return this.parseResponse(response.getBody()); } else { gs.error("API error: Failed to fetch countries. Status code: " + response.getStatusCode()); return null; } } catch (error) { gs.error("API exception: " + error.message); return null; } },\n' +
+        '    parseResponse: function(body) { try { var data = JSON.parse(body); var countries = []; for (var i = 0; i < data.length; i++) { var country = data[i]; if (country.name && country.cca2) { countries.push({ name: country.name.common, code: country.cca2 }); } } countries.sort(function(a, b) { return a.name.localeCompare(b.name); }); return countries; } catch (error) { gs.error("Parse error: " + error.message); return null; } },\n' +
+        '    updateChoices: function(countries) { var result = {success: true, added: 0, updated: 0, total: countries.length}; var existingChoices = {}; var choiceGR = new GlideRecord("sys_choice"); choiceGR.addQuery("name", this.tableName); choiceGR.addQuery("element", "country"); choiceGR.query(); while (choiceGR.next()) { existingChoices[choiceGR.getValue("value")] = { label: choiceGR.getValue("label"), sys_id: choiceGR.getUniqueValue() }; } for (var i = 0; i < countries.length; i++) { var country = countries[i]; if (!existingChoices[country.code]) { var newChoice = new GlideRecord("sys_choice"); newChoice.initialize(); newChoice.setValue("name", this.tableName); newChoice.setValue("element", "country"); newChoice.setValue("value", country.code); newChoice.setValue("label", country.name); newChoice.setValue("sequence", (i + 1) * 10); if (newChoice.insert()) { result.added++; } } else if (existingChoices[country.code].label !== country.name) { var updateChoice = new GlideRecord("sys_choice"); if(updateChoice.get(existingChoices[country.code].sys_id)) { updateChoice.setValue("label", country.name); updateChoice.update(); result.updated++; } } } result.message = "Added " + result.added + ", Updated " + result.updated + " countries"; gs.info("CountryIntegration: Sync complete. " + result.message); return result; }\n' +
+        '};';
+    siGR.setValue('name', 'CountryIntegration');
+    siGR.setValue('script', scriptCode);
+    siGR.setValue('active', true);
+    siGR.setValue('access', 'package_private');
+    if (siExists) { siGR.update(); } else { siGR.insert(); }
+    gs.info('--> Script Include setup complete.');
 
-    // ===== Trin 2: Definer og klargør integrations-jobbet =====
-    var integrationScript = `
-        gs.info('### INTEGRATION JOB: Starting execution as ' + gs.getUserName() + ' ###');
-        try {
-            // STEP 1: SCRIPT INCLUDE
-            var siGR = new GlideRecord('sys_script_include');
-            siGR.addQuery('name', 'CountryIntegration');
-            siGR.query();
-            var exists = siGR.next();
-            if (!exists) { siGR.initialize(); }
-            var scriptCode = 'var CountryIntegration = Class.create();\\\\n';
-            scriptCode += 'CountryIntegration.prototype = {\\\\n';
-            scriptCode += '    initialize: function() { this.apiUrl = "https://restcountries.com/v3.1/all?fields=name,cca2"; this.tableName = "cmn_location"; this.timeout = 30000; },\\\\n';
-            scriptCode += '    syncCountries: function() { try { var countries = this.fetchCountries(); if (!countries) { return {success: false, message: "No data received"}; } return this.updateChoices(countries); } catch (error) { return {success: false, message: error.message}; } },\\\\n';
-            scriptCode += '    fetchCountries: function() { try { var request = new sn_ws.RESTMessageV2(); request.setEndpoint(this.apiUrl); request.setHttpMethod("GET"); request.setRequestTimeout(this.timeout); var response = request.execute(); if (response.getStatusCode() == 200) { return this.parseResponse(response.getBody()); } return null; } catch (error) { gs.error("API error: " + error.message); return null; } },\\\\n';
-            scriptCode += '    parseResponse: function(body) { try { var data = JSON.parse(body); var countries = []; for (var i = 0; i < data.length; i++) { var country = data[i]; if (country.name && country.cca2) { countries.push({ name: country.name.common, code: country.cca2 }); } } countries.sort(function(a, b) { return a.name.localeCompare(b.name); }); return countries; } catch (error) { gs.error("Parse error: " + error.message); return null; } },\\\\n';
-            scriptCode += '    updateChoices: function(countries) { var result = {success: true, added: 0, total: countries.length}; var existing = {}; var choiceGR = new GlideRecord("sys_choice"); choiceGR.addQuery("name", this.tableName); choiceGR.addQuery("element", "country"); choiceGR.query(); while (choiceGR.next()) { existing[choiceGR.getValue("value")] = choiceGR.getUniqueValue(); } for (var i = 0; i < countries.length; i++) { var country = countries[i]; if (!existing[country.code]) { var newChoice = new GlideRecord("sys_choice"); newChoice.initialize(); newChoice.setValue("name", this.tableName); newChoice.setValue("element", "country"); newChoice.setValue("value", country.code); newChoice.setValue("label", country.name); newChoice.setValue("sequence", (i + 1) * 10); if (newChoice.insert()) { result.added++; } } } result.message = "Added " + result.added + " countries"; return result; }\\\\n';
-            scriptCode += '};';
-            siGR.setValue('name', 'CountryIntegration');
-            siGR.setValue('script', scriptCode);
-            siGR.setValue('active', true);
-            siGR.setValue('access', 'package_private');
-            if (exists) { siGR.update(); } else { siGR.insert(); }
-            gs.info('--> INTEGRATION JOB: Script Include created/updated.');
+    // ===== Trin 3: Opret/opdater de planlagte jobs =====
+    gs.info('--> Creating/updating Sync Job: Country Data Nightly Sync');
+    var syncJobGR = new GlideRecord('sysauto_script');
+    syncJobGR.addQuery('name', 'Country Data Nightly Sync');
+    syncJobGR.query();
+    var syncJobExists = syncJobGR.next();
+    if (!syncJobExists) { syncJobGR.initialize(); }
+    syncJobGR.setValue('name', 'Country Data Nightly Sync');
+    syncJobGR.setValue('script', 'gs.info("Starting scheduled country data sync."); new CountryIntegration().syncCountries();');
+    syncJobGR.setValue('active', true);
+    syncJobGR.setValue('run_type', 'periodically');
+    syncJobGR.setValue('run_dayofweek', '6'); // Saturday
+    syncJobGR.setValue('run_time', '04:00:00');
+    syncJobGR.setValue('run_as', userSysId);
+    if (syncJobExists) { syncJobGR.update(); } else { syncJobGR.insert(); }
 
-            // STEP 2: POPULATE COUNTRIES
-            var integration = new CountryIntegration();
-            var syncResult = integration.syncCountries();
-            if (syncResult && syncResult.success) { gs.info('--> INTEGRATION JOB: Country sync successful: ' + syncResult.message); } else { gs.error('--> INTEGRATION JOB: Country sync failed.'); }
+    gs.info('--> Creating/updating Monitoring Job: Country Data Consistency Check');
+    var monitorJobGR = new GlideRecord('sysauto_script');
+    monitorJobGR.addQuery('name', 'Country Data Consistency Check');
+    monitorJobGR.query();
+    var monitorJobExists = monitorJobGR.next();
+    if (!monitorJobExists) { monitorJobGR.initialize(); }
+    var consistencyScript = 'try{gs.info("=== Country Consistency Check ===");var choiceGR=new GlideRecord("sys_choice");choiceGR.addQuery("name","cmn_location");choiceGR.addQuery("element","country");choiceGR.query();var total=0;var issues=0;var duplicates={};var dkFound=false;while(choiceGR.next()){total++;var code=choiceGR.getValue("value");var name=choiceGR.getValue("label");if(code==="DK")dkFound=true;if(!code||code.length!==2||!/^[A-Z]{2}$/.test(code)){issues++;gs.warn("Invalid code: "+code+" ("+name+")");}if(duplicates[code]){issues++;gs.warn("Duplicate: "+code);}duplicates[code]=true;if(!choiceGR.getValue("sequence")){issues++;gs.warn("Missing sequence: "+code);}}var qualityScore=total>0?Math.round(((total-issues)/total)*100):0;gs.info("Countries: "+total+", Issues: "+issues+", Quality: "+qualityScore+"%");gs.info("Denmark available: "+(dkFound?"Yes":"No"));gs.setProperty("country.check.last_run",gs.nowDateTime());gs.setProperty("country.check.total",total);gs.setProperty("country.check.issues",issues);gs.setProperty("country.check.quality_score",qualityScore);}catch(error){gs.error("Consistency check error: "+error.message);}';
+    monitorJobGR.setValue('name', 'Country Data Consistency Check');
+    monitorJobGR.setValue('script', consistencyScript);
+    monitorJobGR.setValue('active', true);
+    monitorJobGR.setValue('run_type', 'periodically');
+    monitorJobGR.setValue('run_dayofweek', '1'); // Monday
+    monitorJobGR.setValue('run_time', '02:00:00');
+    monitorJobGR.setValue('run_as', userSysId);
+    if (monitorJobExists) { monitorJobGR.update(); } else { monitorJobGR.insert(); }
+    gs.info('--> Scheduled Jobs setup complete.');
 
-            // STEP 3: SCHEDULED JOB
-            var jobGR = new GlideRecord('sysauto_script');
-            jobGR.addQuery('name', 'Country Data Consistency Check');
-            jobGR.query();
-            var jobExists = jobGR.next();
-            if (!jobExists) { jobGR.initialize(); }
-            var consistencyScript = 'try{gs.info("=== Country Consistency Check ===");var choiceGR=new GlideRecord("sys_choice");choiceGR.addQuery("name","cmn_location");choiceGR.addQuery("element","country");choiceGR.query();var total=0;var issues=0;var duplicates={};var dkFound=false;while(choiceGR.next()){total++;var code=choiceGR.getValue("value");var name=choiceGR.getValue("label");if(code==="DK")dkFound=true;if(!code||code.length!==2||!/^[A-Z]{2}$/.test(code)){issues++;gs.warn("Invalid code: "+code+" ("+name+")");}if(duplicates[code]){issues++;gs.warn("Duplicate: "+code);}duplicates[code]=true;if(!choiceGR.getValue("sequence")){issues++;gs.warn("Missing sequence: "+code);}}var qualityScore=total>0?Math.round(((total-issues)/total)*100):0;gs.info("Countries: "+total+", Issues: "+issues+", Quality: "+qualityScore+"%");gs.info("Denmark available: "+(dkFound?"Yes":"No"));gs.setProperty("country.check.last_run",gs.nowDateTime());gs.setProperty("country.check.total",total);gs.setProperty("country.check.issues",issues);gs.setProperty("country.check.quality_score",qualityScore);if(issues===0){gs.info("SUCCESS: No consistency issues found");}else if(issues<=10){gs.info("MINOR: "+issues+" issues found - review recommended");}else{gs.warn("MAJOR: "+issues+" issues found - immediate attention required");}}catch(error){gs.error("Consistency check error: "+error.message);gs.setProperty("country.check.last_error",error.message);}';
-            jobGR.setValue('name', 'Country Data Consistency Check');
-            jobGR.setValue('script', consistencyScript);
-            jobGR.setValue('active', true);
-            jobGR.setValue('run_type', 'periodically');
-            jobGR.setValue('run_period', '604800');
-            jobGR.setValue('run_as', gs.getUserID());
-            if (jobExists) { jobGR.update(); } else { jobGR.insert(); }
-            gs.info('--> INTEGRATION JOB: Scheduled consistency check created/updated.');
-            
-            // STEP 4: CLEANUP - Slet dette midlertidige job
-            var self = new GlideRecord('sysauto_script');
-            if(self.get(GlideExecutionTracker.getGlideExecutionTracker().getSysID())) {
-                self.deleteRecord();
-                gs.info('--> INTEGRATION JOB: Self-destructing temporary job.');
-            }
+    // ===== Trin 4: Kør en indledende synkronisering =====
+    gs.info('--> Triggering initial data sync in the background. Check logs for "CountryIntegration" for status.');
+    var initialSyncJob = new GlideRecord('sysauto_script');
+    initialSyncJob.initialize();
+    initialSyncJob.setValue('name', 'TEMP - Initial Country Data Sync (' + new GlideDateTime().getDisplayValue() + ')');
+    initialSyncJob.setValue('run_type', 'on_demand');
+    initialSyncJob.setValue('active', true);
+    initialSyncJob.setValue('run_as', userSysId);
+    initialSyncJob.setValue('script', 'new CountryIntegration().syncCountries(); var self = new GlideRecord("sysauto_script"); if (self.get(GlideExecutionTracker.getGlideExecutionTracker().getSysID())) { self.deleteRecord(); }');
+    var initialJobSysId = initialSyncJob.insert();
 
-        } catch(e) {
-            gs.error('### INTEGRATION JOB: A critical error occurred: ' + e.message);
-        }
-        gs.info('### INTEGRATION JOB: Execution finished. ###');
-    `;
-    
-    // ===== Trin 3: Opret og eksekver jobbet øjeblikkeligt =====
-    var scheduledJob = new GlideRecord('sysauto_script');
-    scheduledJob.initialize();
-    scheduledJob.setValue('name', 'TEMP - All-Inclusive Country Setup (' + new GlideDateTime().getDisplayValue() + ')');
-    scheduledJob.setValue('run_type', 'on_demand');
-    scheduledJob.setValue('active', true);
-    scheduledJob.setValue('run_as', userSysId);
-    scheduledJob.setValue('script', integrationScript);
-    var jobSysId = scheduledJob.insert();
-    
-    if (jobSysId) {
-        gs.info('### ORCHESTRATOR: Temporary job created. Triggering now... ###');
-        SncTriggerSynchronizer.executeNow(scheduledJob);
-        gs.info('### ORCHESTRATOR: Job triggered. Check system logs for "INTEGRATION JOB" messages to see the result. ###');
+    if (initialJobSysId) {
+        SncTriggerSynchronizer.executeNow(initialSyncJob);
+        gs.info('--> Initial sync triggered.');
     } else {
-        gs.error('### ORCHESTRATOR: Could not create the temporary scheduled job. Setup failed. ###');
+        gs.error('--> Could not trigger initial sync job.');
     }
 
-} catch (e) {
-    gs.error('### ORCHESTRATOR: A critical error occurred in the main script: ' + e.message);
-}
+    gs.info('### SETUP (v5.0): Installation script complete. ###');
+
+})();

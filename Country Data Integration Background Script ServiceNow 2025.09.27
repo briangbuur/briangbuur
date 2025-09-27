@@ -1,328 +1,139 @@
-// Complete PDI Country Integration Solution
-// Execute in: System Definition > Scripts - Background
-// This creates everything needed for country integration in a clean PDI
-
+/****************************************************************************************
+* SCRIPT: All-Inclusive Country Integration Setup (v2.01 - Polished)
+* Formål: Opretter integrationsbruger OG udfører hele integrationen i korrekt kontekst.
+* Fjerner nu også irrelevante demo-værdier (edu_status) sat af PDI.
+****************************************************************************************/
 try {
-    gs.info('=== Starting Complete Country Integration Setup ===');
-    
-    var setupResults = {
-        scriptInclude: false,
-        countries: 0,
-        scheduledJob: false,
-        errors: []
-    };
-    
-    // ==========================================
-    // STEP 1: CREATE COUNTRY INTEGRATION SCRIPT INCLUDE
-    // ==========================================
-    gs.info('Step 1: Creating CountryIntegration Script Include...');
-    
-    try {
-        var siGR = new GlideRecord('sys_script_include');
-        siGR.addQuery('name', 'CountryIntegration');
-        siGR.query();
-        
-        var exists = siGR.next();
-        if (!exists) {
-            siGR = new GlideRecord('sys_script_include');
-            siGR.initialize();
-        }
-        
-        var scriptCode = 'var CountryIntegration = Class.create();\n';
-        scriptCode += 'CountryIntegration.prototype = {\n';
-        scriptCode += '    initialize: function() {\n';
-        scriptCode += '        this.apiUrl = "https://restcountries.com/v3.1/all?fields=name,cca2";\n';
-        scriptCode += '        this.tableName = "cmn_location";\n';
-        scriptCode += '        this.timeout = 30000;\n';
-        scriptCode += '    },\n';
-        scriptCode += '    syncCountries: function() {\n';
-        scriptCode += '        try {\n';
-        scriptCode += '            gs.info("CountryIntegration: Starting sync");\n';
-        scriptCode += '            var countries = this.fetchCountries();\n';
-        scriptCode += '            if (!countries) {\n';
-        scriptCode += '                return {success: false, message: "No data received"};\n';
-        scriptCode += '            }\n';
-        scriptCode += '            var result = this.updateChoices(countries);\n';
-        scriptCode += '            return result;\n';
-        scriptCode += '        } catch (error) {\n';
-        scriptCode += '            return {success: false, message: error.message};\n';
-        scriptCode += '        }\n';
-        scriptCode += '    },\n';
-        scriptCode += '    fetchCountries: function() {\n';
-        scriptCode += '        try {\n';
-        scriptCode += '            var request = new sn_ws.RESTMessageV2();\n';
-        scriptCode += '            request.setEndpoint(this.apiUrl);\n';
-        scriptCode += '            request.setHttpMethod("GET");\n';
-        scriptCode += '            request.setRequestTimeout(this.timeout);\n';
-        scriptCode += '            var response = request.execute();\n';
-        scriptCode += '            if (response.getStatusCode() == 200) {\n';
-        scriptCode += '                return this.parseResponse(response.getBody());\n';
-        scriptCode += '            }\n';
-        scriptCode += '            return null;\n';
-        scriptCode += '        } catch (error) {\n';
-        scriptCode += '            gs.error("API error: " + error.message);\n';
-        scriptCode += '            return null;\n';
-        scriptCode += '        }\n';
-        scriptCode += '    },\n';
-        scriptCode += '    parseResponse: function(body) {\n';
-        scriptCode += '        try {\n';
-        scriptCode += '            var data = JSON.parse(body);\n';
-        scriptCode += '            var countries = [];\n';
-        scriptCode += '            for (var i = 0; i < data.length; i++) {\n';
-        scriptCode += '                var country = data[i];\n';
-        scriptCode += '                if (country.name && country.cca2) {\n';
-        scriptCode += '                    countries.push({\n';
-        scriptCode += '                        name: country.name.common,\n';
-        scriptCode += '                        code: country.cca2\n';
-        scriptCode += '                    });\n';
-        scriptCode += '                }\n';
-        scriptCode += '            }\n';
-        scriptCode += '            countries.sort(function(a, b) {\n';
-        scriptCode += '                return a.name.localeCompare(b.name);\n';
-        scriptCode += '            });\n';
-        scriptCode += '            return countries;\n';
-        scriptCode += '        } catch (error) {\n';
-        scriptCode += '            gs.error("Parse error: " + error.message);\n';
-        scriptCode += '            return null;\n';
-        scriptCode += '        }\n';
-        scriptCode += '    },\n';
-        scriptCode += '    updateChoices: function(countries) {\n';
-        scriptCode += '        var result = {success: true, added: 0, updated: 0, total: countries.length};\n';
-        scriptCode += '        var existing = {};\n';
-        scriptCode += '        var choiceGR = new GlideRecord("sys_choice");\n';
-        scriptCode += '        choiceGR.addQuery("name", this.tableName);\n';
-        scriptCode += '        choiceGR.addQuery("element", "country");\n';
-        scriptCode += '        choiceGR.query();\n';
-        scriptCode += '        while (choiceGR.next()) {\n';
-        scriptCode += '            existing[choiceGR.getValue("value")] = choiceGR.getValue("sys_id");\n';
-        scriptCode += '        }\n';
-        scriptCode += '        for (var i = 0; i < countries.length; i++) {\n';
-        scriptCode += '            var country = countries[i];\n';
-        scriptCode += '            if (!existing[country.code]) {\n';
-        scriptCode += '                var newChoice = new GlideRecord("sys_choice");\n';
-        scriptCode += '                newChoice.initialize();\n';
-        scriptCode += '                newChoice.setValue("name", this.tableName);\n';
-        scriptCode += '                newChoice.setValue("element", "country");\n';
-        scriptCode += '                newChoice.setValue("value", country.code);\n';
-        scriptCode += '                newChoice.setValue("label", country.name);\n';
-        scriptCode += '                newChoice.setValue("sequence", (i + 1) * 10);\n';
-        scriptCode += '                if (newChoice.insert()) {\n';
-        scriptCode += '                    result.added++;\n';
-        scriptCode += '                }\n';
-        scriptCode += '            }\n';
-        scriptCode += '        }\n';
-        scriptCode += '        result.message = "Added " + result.added + " countries";\n';
-        scriptCode += '        return result;\n';
-        scriptCode += '    }\n';
-        scriptCode += '};';
-        
-        siGR.setValue('name', 'CountryIntegration');
-        siGR.setValue('script', scriptCode);
-        siGR.setValue('active', true);
-        siGR.setValue('access', 'package_private');
-        siGR.setValue('description', 'Country integration for location dropdowns using REST Countries API');
-        
-        if (exists) {
-            siGR.update();
-        } else {
-            siGR.insert();
-        }
-        
-        setupResults.scriptInclude = true;
-        gs.info('CountryIntegration Script Include created');
-        
-    } catch (error) {
-        setupResults.errors.push('Script Include error: ' + error.message);
-        gs.error('Script Include failed: ' + error.message);
-    }
-    
-    // ==========================================
-    // STEP 2: POPULATE COUNTRIES FROM API
-    // ==========================================
-    gs.info('Step 2: Populating countries from REST Countries API...');
-    
-    try {
-        var integration = new CountryIntegration();
-        var syncResult = integration.syncCountries();
-        
-        if (syncResult && syncResult.success) {
-            setupResults.countries = syncResult.added || 0;
-            gs.info('Country sync successful: ' + syncResult.message);
-        } else {
-            setupResults.errors.push('Country sync failed: ' + (syncResult ? syncResult.message : 'Unknown error'));
-            gs.error('Country sync failed');
-        }
-        
-    } catch (error) {
-        setupResults.errors.push('Country sync error: ' + error.message);
-        gs.error('Country sync error: ' + error.message);
-    }
-    
-    // ==========================================
-    // STEP 3: CREATE SCHEDULED CONSISTENCY CHECK
-    // ==========================================
-    gs.info('Step 3: Creating scheduled consistency check job...');
-    
-    try {
-        var jobGR = new GlideRecord('sysauto_script');
-        jobGR.addQuery('name', 'Country Data Consistency Check');
-        jobGR.query();
-        
-        var jobExists = jobGR.next();
-        if (!jobExists) {
-            jobGR = new GlideRecord('sysauto_script');
-            jobGR.initialize();
-        }
-        
-        var consistencyScript = 'try {\n';
-        consistencyScript += '    gs.info("=== Country Consistency Check ===");\n';
-        consistencyScript += '    var choiceGR = new GlideRecord("sys_choice");\n';
-        consistencyScript += '    choiceGR.addQuery("name", "cmn_location");\n';
-        consistencyScript += '    choiceGR.addQuery("element", "country");\n';
-        consistencyScript += '    choiceGR.query();\n';
-        consistencyScript += '    var total = 0;\n';
-        consistencyScript += '    var issues = 0;\n';
-        consistencyScript += '    var duplicates = {};\n';
-        consistencyScript += '    var dkFound = false;\n';
-        consistencyScript += '    while (choiceGR.next()) {\n';
-        consistencyScript += '        total++;\n';
-        consistencyScript += '        var code = choiceGR.getValue("value");\n';
-        consistencyScript += '        var name = choiceGR.getValue("label");\n';
-        consistencyScript += '        if (code === "DK") dkFound = true;\n';
-        consistencyScript += '        if (!code || code.length !== 2 || !/^[A-Z]{2}$/.test(code)) {\n';
-        consistencyScript += '            issues++;\n';
-        consistencyScript += '            gs.warn("Invalid code: " + code + " (" + name + ")");\n';
-        consistencyScript += '        }\n';
-        consistencyScript += '        if (duplicates[code]) {\n';
-        consistencyScript += '            issues++;\n';
-        consistencyScript += '            gs.warn("Duplicate: " + code);\n';
-        consistencyScript += '        }\n';
-        consistencyScript += '        duplicates[code] = true;\n';
-        consistencyScript += '        if (!choiceGR.getValue("sequence")) {\n';
-        consistencyScript += '            issues++;\n';
-        consistencyScript += '            gs.warn("Missing sequence: " + code);\n';
-        consistencyScript += '        }\n';
-        consistencyScript += '    }\n';
-        consistencyScript += '    var qualityScore = total > 0 ? Math.round(((total - issues) / total) * 100) : 0;\n';
-        consistencyScript += '    gs.info("Countries: " + total + ", Issues: " + issues + ", Quality: " + qualityScore + "%");\n';
-        consistencyScript += '    gs.info("Denmark available: " + (dkFound ? "Yes" : "No"));\n';
-        consistencyScript += '    gs.setProperty("country.check.last_run", gs.nowDateTime());\n';
-        consistencyScript += '    gs.setProperty("country.check.total", total);\n';
-        consistencyScript += '    gs.setProperty("country.check.issues", issues);\n';
-        consistencyScript += '    gs.setProperty("country.check.quality_score", qualityScore);\n';
-        consistencyScript += '    if (issues === 0) {\n';
-        consistencyScript += '        gs.info("SUCCESS: No consistency issues found");\n';
-        consistencyScript += '    } else if (issues <= 10) {\n';
-        consistencyScript += '        gs.info("MINOR: " + issues + " issues found - review recommended");\n';
-        consistencyScript += '    } else {\n';
-        consistencyScript += '        gs.warn("MAJOR: " + issues + " issues found - immediate attention required");\n';
-        consistencyScript += '    }\n';
-        consistencyScript += '} catch (error) {\n';
-        consistencyScript += '    gs.error("Consistency check error: " + error.message);\n';
-        consistencyScript += '    gs.setProperty("country.check.last_error", error.message);\n';
-        consistencyScript += '}';
-        
-        jobGR.setValue('name', 'Country Data Consistency Check');
-        jobGR.setValue('script', consistencyScript);
-        jobGR.setValue('active', true);
-        jobGR.setValue('run_type', 'periodically');
-        jobGR.setValue('run_period', '604800'); // 1 week in seconds
-        jobGR.setValue('run_dayofweek', '1'); // Monday
-        jobGR.setValue('run_time', '02:00:00');
-        jobGR.setValue('description', 'Weekly country data consistency check for location choice list');
-        
-        if (jobExists) {
-            jobGR.update();
-        } else {
-            jobGR.insert();
-        }
-        
-        setupResults.scheduledJob = true;
-        gs.info('Scheduled consistency check created');
-        
-    } catch (error) {
-        setupResults.errors.push('Scheduled job error: ' + error.message);
-        gs.error('Scheduled job failed: ' + error.message);
-    }
-    
-    // ==========================================
-    // STEP 4: VERIFICATION AND TESTING
-    // ==========================================
-    gs.info('Step 4: Running verification...');
-    
-    var verifyGR = new GlideRecord('sys_choice');
-    verifyGR.addQuery('name', 'cmn_location');
-    verifyGR.addQuery('element', 'country');
-    verifyGR.query();
-    
-    var totalCount = 0;
-    var dkFound = false;
-    var invalidCount = 0;
-    
-    while (verifyGR.next()) {
-        totalCount++;
-        var value = verifyGR.getValue('value');
-        
-        if (value === 'DK') {
-            dkFound = true;
-        }
-        
-        if (!value || value.length !== 2 || !/^[A-Z]{2}$/.test(value)) {
-            invalidCount++;
-        }
-    }
-    
-    // ==========================================
-    // FINAL RESULTS AND SUMMARY
-    // ==========================================
-    gs.info('=== COMPLETE COUNTRY INTEGRATION SETUP RESULTS ===');
-    gs.info('Script Include: ' + (setupResults.scriptInclude ? 'Created' : 'Failed'));
-    gs.info('Countries added: ' + setupResults.countries);
-    gs.info('Scheduled job: ' + (setupResults.scheduledJob ? 'Created' : 'Failed'));
-    gs.info('Total countries in system: ' + totalCount);
-    gs.info('Invalid format countries: ' + invalidCount);
-    gs.info('Denmark (DK) available: ' + (dkFound ? 'Yes' : 'No'));
-    gs.info('Setup errors: ' + setupResults.errors.length);
-    
-    if (setupResults.errors.length > 0) {
-        gs.info('=== ERRORS ENCOUNTERED ===');
-        for (var e = 0; e < setupResults.errors.length; e++) {
-            gs.error('Error ' + (e + 1) + ': ' + setupResults.errors[e]);
-        }
-    }
-    
-    gs.info('=== MONITORING PROPERTIES CREATED ===');
-    gs.info('- country.check.last_run (timestamp)');
-    gs.info('- country.check.total (country count)');
-    gs.info('- country.check.issues (issue count)');
-    gs.info('- country.check.quality_score (percentage)');
-    
-    gs.info('=== NEXT STEPS ===');
-    gs.info('1. Test: Go to Configuration > Location > New');
-    gs.info('2. Check the Country dropdown field');
-    gs.info('3. Verify ~250 countries are available');
-    gs.info('4. Confirm Denmark appears in the list');
-    gs.info('5. Monitor: System Scheduler > Scheduled Jobs');
-    gs.info('6. Review: System Properties for monitoring data');
-    
-    if (setupResults.scriptInclude && totalCount > 200 && dkFound) {
-        gs.info('=== SUCCESS ===');
-        gs.info('Complete country integration is ready for use!');
-        gs.info('The system includes:');
-        gs.info('- ' + totalCount + ' countries in dropdown');
-        gs.info('- Reusable CountryIntegration class');
-        gs.info('- Weekly automated consistency monitoring');
-        gs.info('- System properties for dashboard creation');
+    gs.info('### ORCHESTRATOR: Starting All-Inclusive Setup ###');
+
+    // ===== Trin 1: Opret den sikre integrationsbruger =====
+    var userSysId;
+    var userName = 'integration.countries';
+    var userGR = new GlideRecord('sys_user');
+    if (!userGR.get('user_name', userName)) {
+        gs.info("--> Creating user: " + userName);
+        userGR.initialize();
+        userGR.setValue('user_name', userName);
+        userGR.setValue('first_name', 'Integration');
+        userGR.setValue('last_name', 'Countries API');
+        userGR.setValue('web_service_access_only', true);
+        userGR.setValue('internal_integration_user', true);
+        userGR.setValue('notification', 2);
+        userGR.setValue('source', 'Integration: REST Countries API (Scripted)');
+        userGR.setValue('edu_status', ''); // <-- NY LINJE: Nulstil PDI demo-værdi for at sikre en ren record.
+
+        var tempPassword = new GlideSecureRandomUtil().getSecureRandomString(16);
+        userGR.setUserPassword(tempPassword);
+        userSysId = userGR.insert();
     } else {
-        gs.warn('=== SETUP INCOMPLETE ===');
-        gs.warn('Some components may need manual review');
-        gs.warn('Check errors above and verify API connectivity');
+        gs.info("--> User " + userName + " already exists. Updating fields...");
+        userSysId = userGR.getUniqueValue();
+        userGR.setValue('internal_integration_user', true);
+        userGR.setValue('notification', 2);
+        userGR.setValue('source', 'Integration: REST Countries API (Scripted)');
+        userGR.setValue('edu_status', ''); // <-- NY LINJE: Nulstil PDI demo-værdi for at sikre en ren record.
+        userGR.update();
     }
+
+    // Tildel nødvendige roller
+    var rolesToAssign = ['rest_service', 'personalize_choices'];
+    for (var i = 0; i < rolesToAssign.length; i++) {
+        var roleName = rolesToAssign[i];
+        var roleGR = new GlideRecord('sys_user_has_role');
+        roleGR.addQuery('user', userSysId);
+        roleGR.addQuery('role.name', roleName);
+        roleGR.query();
+        if (!roleGR.next()) {
+            var newRole = new GlideRecord('sys_user_has_role');
+            newRole.setValue('user', userSysId);
+            var roleRecord = new GlideRecord('sys_user_role');
+            if (roleRecord.get('name', roleName)) {
+                newRole.setValue('role', roleRecord.getUniqueValue());
+                newRole.insert();
+                gs.info("--> Role '" + roleName + "' assigned.");
+            }
+        }
+    }
+    gs.info('### ORCHESTRATOR: User setup complete. Preparing integration job. ###');
+
+
+    // ===== Trin 2: Definer og klargør integrations-jobbet =====
+    var integrationScript = `
+        gs.info('### INTEGRATION JOB: Starting execution as ' + gs.getUserName() + ' ###');
+        try {
+            // STEP 1: SCRIPT INCLUDE
+            var siGR = new GlideRecord('sys_script_include');
+            siGR.addQuery('name', 'CountryIntegration');
+            siGR.query();
+            var exists = siGR.next();
+            if (!exists) { siGR.initialize(); }
+            var scriptCode = 'var CountryIntegration = Class.create();\\\\n';
+            scriptCode += 'CountryIntegration.prototype = {\\\\n';
+            scriptCode += '    initialize: function() { this.apiUrl = "https://restcountries.com/v3.1/all?fields=name,cca2"; this.tableName = "cmn_location"; this.timeout = 30000; },\\\\n';
+            scriptCode += '    syncCountries: function() { try { var countries = this.fetchCountries(); if (!countries) { return {success: false, message: "No data received"}; } return this.updateChoices(countries); } catch (error) { return {success: false, message: error.message}; } },\\\\n';
+            scriptCode += '    fetchCountries: function() { try { var request = new sn_ws.RESTMessageV2(); request.setEndpoint(this.apiUrl); request.setHttpMethod("GET"); request.setRequestTimeout(this.timeout); var response = request.execute(); if (response.getStatusCode() == 200) { return this.parseResponse(response.getBody()); } return null; } catch (error) { gs.error("API error: " + error.message); return null; } },\\\\n';
+            scriptCode += '    parseResponse: function(body) { try { var data = JSON.parse(body); var countries = []; for (var i = 0; i < data.length; i++) { var country = data[i]; if (country.name && country.cca2) { countries.push({ name: country.name.common, code: country.cca2 }); } } countries.sort(function(a, b) { return a.name.localeCompare(b.name); }); return countries; } catch (error) { gs.error("Parse error: " + error.message); return null; } },\\\\n';
+            scriptCode += '    updateChoices: function(countries) { var result = {success: true, added: 0, total: countries.length}; var existing = {}; var choiceGR = new GlideRecord("sys_choice"); choiceGR.addQuery("name", this.tableName); choiceGR.addQuery("element", "country"); choiceGR.query(); while (choiceGR.next()) { existing[choiceGR.getValue("value")] = choiceGR.getUniqueValue(); } for (var i = 0; i < countries.length; i++) { var country = countries[i]; if (!existing[country.code]) { var newChoice = new GlideRecord("sys_choice"); newChoice.initialize(); newChoice.setValue("name", this.tableName); newChoice.setValue("element", "country"); newChoice.setValue("value", country.code); newChoice.setValue("label", country.name); newChoice.setValue("sequence", (i + 1) * 10); if (newChoice.insert()) { result.added++; } } } result.message = "Added " + result.added + " countries"; return result; }\\\\n';
+            scriptCode += '};';
+            siGR.setValue('name', 'CountryIntegration');
+            siGR.setValue('script', scriptCode);
+            siGR.setValue('active', true);
+            siGR.setValue('access', 'package_private');
+            if (exists) { siGR.update(); } else { siGR.insert(); }
+            gs.info('--> INTEGRATION JOB: Script Include created/updated.');
+
+            // STEP 2: POPULATE COUNTRIES
+            var integration = new CountryIntegration();
+            var syncResult = integration.syncCountries();
+            if (syncResult && syncResult.success) { gs.info('--> INTEGRATION JOB: Country sync successful: ' + syncResult.message); } else { gs.error('--> INTEGRATION JOB: Country sync failed.'); }
+
+            // STEP 3: SCHEDULED JOB
+            var jobGR = new GlideRecord('sysauto_script');
+            jobGR.addQuery('name', 'Country Data Consistency Check');
+            jobGR.query();
+            var jobExists = jobGR.next();
+            if (!jobExists) { jobGR.initialize(); }
+            var consistencyScript = 'try{gs.info("=== Country Consistency Check ===");var choiceGR=new GlideRecord("sys_choice");choiceGR.addQuery("name","cmn_location");choiceGR.addQuery("element","country");choiceGR.query();var total=0;var issues=0;var duplicates={};var dkFound=false;while(choiceGR.next()){total++;var code=choiceGR.getValue("value");var name=choiceGR.getValue("label");if(code==="DK")dkFound=true;if(!code||code.length!==2||!/^[A-Z]{2}$/.test(code)){issues++;gs.warn("Invalid code: "+code+" ("+name+")");}if(duplicates[code]){issues++;gs.warn("Duplicate: "+code);}duplicates[code]=true;if(!choiceGR.getValue("sequence")){issues++;gs.warn("Missing sequence: "+code);}}var qualityScore=total>0?Math.round(((total-issues)/total)*100):0;gs.info("Countries: "+total+", Issues: "+issues+", Quality: "+qualityScore+"%");gs.info("Denmark available: "+(dkFound?"Yes":"No"));gs.setProperty("country.check.last_run",gs.nowDateTime());gs.setProperty("country.check.total",total);gs.setProperty("country.check.issues",issues);gs.setProperty("country.check.quality_score",qualityScore);if(issues===0){gs.info("SUCCESS: No consistency issues found");}else if(issues<=10){gs.info("MINOR: "+issues+" issues found - review recommended");}else{gs.warn("MAJOR: "+issues+" issues found - immediate attention required");}}catch(error){gs.error("Consistency check error: "+error.message);gs.setProperty("country.check.last_error",error.message);}';
+            jobGR.setValue('name', 'Country Data Consistency Check');
+            jobGR.setValue('script', consistencyScript);
+            jobGR.setValue('active', true);
+            jobGR.setValue('run_type', 'periodically');
+            jobGR.setValue('run_period', '604800');
+            jobGR.setValue('run_as', gs.getUserID());
+            if (jobExists) { jobGR.update(); } else { jobGR.insert(); }
+            gs.info('--> INTEGRATION JOB: Scheduled consistency check created/updated.');
+            
+            // STEP 4: CLEANUP - Slet dette midlertidige job
+            var self = new GlideRecord('sysauto_script');
+            if(self.get(GlideExecutionTracker.getGlideExecutionTracker().getSysID())) {
+                self.deleteRecord();
+                gs.info('--> INTEGRATION JOB: Self-destructing temporary job.');
+            }
+
+        } catch(e) {
+            gs.error('### INTEGRATION JOB: A critical error occurred: ' + e.message);
+        }
+        gs.info('### INTEGRATION JOB: Execution finished. ###');
+    `;
     
-    gs.info('=== SETUP COMPLETE ===');
+    // ===== Trin 3: Opret og eksekver jobbet øjeblikkeligt =====
+    var scheduledJob = new GlideRecord('sysauto_script');
+    scheduledJob.initialize();
+    scheduledJob.setValue('name', 'TEMP - All-Inclusive Country Setup (' + new GlideDateTime().getDisplayValue() + ')');
+    scheduledJob.setValue('run_type', 'on_demand');
+    scheduledJob.setValue('active', true);
+    scheduledJob.setValue('run_as', userSysId);
+    scheduledJob.setValue('script', integrationScript);
+    var jobSysId = scheduledJob.insert();
     
-} catch (error) {
-    gs.error('=== CRITICAL SETUP ERROR ===');
-    gs.error('Error: ' + error.message);
-    gs.error('Details: ' + error.toString());
+    if (jobSysId) {
+        gs.info('### ORCHESTRATOR: Temporary job created. Triggering now... ###');
+        SncTriggerSynchronizer.executeNow(scheduledJob);
+        gs.info('### ORCHESTRATOR: Job triggered. Check system logs for "INTEGRATION JOB" messages to see the result. ###');
+    } else {
+        gs.error('### ORCHESTRATOR: Could not create the temporary scheduled job. Setup failed. ###');
+    }
+
+} catch (e) {
+    gs.error('### ORCHESTRATOR: A critical error occurred in the main script: ' + e.message);
 }

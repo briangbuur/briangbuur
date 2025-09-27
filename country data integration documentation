@@ -1,0 +1,73 @@
+Selvfølgelig. Her er den endelige dokumentation igen, fuldstændig renset for systemkoder.
+
+---
+### **ServiceNow Country Integration - Komplet Dokumentation (v2.1 - Final)**
+
+#### **Sektion 1: Teknisk Dokumentation**
+
+##### **Oversigt**
+Denne løsning giver en fuldautomatiseret integration til at udfylde lande-valglister i ServiceNow. Løsningen opretter en sikker, dedikeret integrationsbruger, en genanvendelig `Script Include` til logikken, og et ugentligt job til at overvåge datakvaliteten. Hele opsætningen udføres af ét enkelt 'All-Inclusive'-script.
+
+##### **Ekstern API: REST Countries**
+Løsningen er afhængig af det gratis og åbne REST Countries API for at hente opdaterede landedata.
+* **API Hjemmeside**: `https://restcountries.com/`
+* **Dokumentation**: `https://restcountries.com/` (Hjemmesiden fungerer som den primære dokumentation)
+* **Endpunkt brugt**: `https://restcountries.com/v3.1/all?fields=name,cca2`
+* **Autentificering**: Kræver ingen API-nøgle eller login.
+
+##### **Arkitektur og Oprettede Komponenter**
+Installationsscriptet opretter og konfigurerer følgende komponenter i ServiceNow-instansen:
+
+**1. Integration User**
+* **Navn i systemet**: `integration.countries`
+* **Formål**: En dedikeret systembruger, der ejer og eksekverer alle dele af integrationen for at sikre fuld sporbarhed.
+* **Rettigheder**: Scriptet tildeler kun rollerne `rest_service` og `personalize_choices`. *Bemærk: I PDI-miljøer kan systemet automatisk tildele ekstra standard-roller som `snc_internal`.*
+
+**2. Script Include**
+* **Navn i systemet**: `CountryIntegration`
+* **Formål**: Indeholder al den genanvendelige JavaScript-logik til at hente, parse og indsætte landedata fra API'et.
+
+**3. Scheduled Job**
+* **Navn i systemet**: `Country Data Consistency Check`
+* **Formål**: Et ugentligt job, der **overvåger** datakvaliteten. Det henter **ikke** nye data.
+* **Eksekvering**: Kører hver mandag kl. 02:00 som `integration.countries`-brugeren.
+
+**4. System Properties (Overvågning)**
+* **Navne i systemet**: `country.check.last_run`, `country.check.total`, `country.check.issues`, `country.check.quality_score`
+* **Formål**: Gemmer resultater fra det ugentlige kvalitets-job, så de let kan bruges til dashboards.
+
+**5. Choice List Records (Lande-data)**
+* **Antal**: Ca. 250 records i `sys_choice`-tabellen.
+* **Formål**: Selve landene, der vises i dropdown-menuen.
+
+---
+#### **Sektion 2: Step-by-Step Brugerguide**
+
+##### **Forudsætninger**
+* ServiceNow `admin`-rettigheder.
+* Adgang til "System Definition > Scripts - Background".
+* Udgående internetforbindelse fra ServiceNow-instansen.
+
+##### **Installationsprocedure**
+1.  **Kør All-Inclusive Scriptet**: Naviger til `System Definition > Scripts - Background`, indsæt 'All-Inclusive Country Integration Script (v2.01)', og klik **"Run script"**.
+2.  **Verificer Success**: Tjek loggen for `ORCHESTRATOR`- og `INTEGRATION JOB`-beskeder.
+3.  **Test Integrationen**: Gå til `Locations > All` og opret en ny lokation for at teste **Country**-feltet.
+
+##### **Vedligeholdelse og Datasynkronisering**
+* **Éngangs-dataindlæsning**: Landedata indlæses **kun én gang** under den indledende installation.
+* **Løbende Overvågning**: Det ugentlige job sikrer løbende overvågning af datakvaliteten. Det synkroniserer **ikke** data. Resultater kan ses i `System Properties`.
+* **Manuel Opdatering**: For at opdatere landelisten i fremtiden (f.eks. om et år), skal 'All-Inclusive'-scriptet køres igen. Scriptet er bygget til at håndtere dette uden at skabe dubletter.
+
+---
+#### **Sektion 3: Forbedringer og Fremtidige Muligheder**
+
+##### **Implementerede Forbedringer (Status: Fuldført)**
+* **Sikkerhed & Identitet**: Dedikeret, sikker integrationsbruger med korrekt licenshåndtering.
+* **Arkitektur**: Fuldautomatiseret én-kliks udførelse.
+* **Sporbarhed**: Korrekt data-ejerskab og en ren, veldokumenteret bruger-record.
+* **Drift & Overvågning**: Indbygget ugentligt job til proaktiv kvalitetsovervågning.
+
+##### **Fremtidige Forbedringsmuligheder**
+* **Automatisk Synkronisering**: Udvid det ugentlige job til ikke kun at overvåge, men også at køre en fuld synkronisering for at hente nye lande og opdatere navneændringer.
+* **Konfigurationsstyring**: Flyt variable som API-URL og timeout-værdier til System Properties.
+* **UI til Administration**: Byg en simpel brugerflade, hvor en administrator kan starte en synkronisering manuelt og se status.

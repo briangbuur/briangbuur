@@ -1,0 +1,143 @@
+/****************************************************************************************
+* SCRIPT: Komplet Validering af Country Integration (v2.4 - Finpudset Rapport)
+* Formål: Tjekker alle komponenter og genererer en letlæselig, sektioneret
+* rapport med ikoner og præcise meddelelser.
+****************************************************************************************/
+(function() {
+    var finalReport = {
+        user: [],
+        scriptInclude: [],
+        data: [],
+        syncJob: [],
+        monitorJob: [],
+        errors: 0,
+        warnings: 0
+    };
+
+    function addSuccess(section, msg) { finalReport[section].push('✅ ' + msg); }
+    function addError(section, msg) { finalReport[section].push('❌ ' + msg); finalReport.errors++; }
+    function addWarning(section, msg) { finalReport[section].push('⚠️ ' + msg); finalReport.warnings++; }
+    function addInfo(section, msg) { finalReport[section].push('ℹ️ ' + msg); }
+
+    // === 1. Tjek af Bruger, Værdier, Roller og Grupper ===
+    var userGR = new GlideRecord('sys_user');
+    if (userGR.get('user_name', 'integration.countries')) {
+        addSuccess('user', 'Bruger "integration.countries" fundet.');
+        if (userGR.web_service_access_only == true) { addSuccess('user', 'Værdi: "Web service access only" er korrekt (true).'); } else { addError('user', 'Værdi: "Web service access only" er FORKERT (skulle være true).'); }
+        if (userGR.internal_integration_user == true) { addSuccess('user', 'Værdi: "Internal integration user" er korrekt (true).'); } else { addError('user', 'Værdi: "Internal integration user" er FORKERT (skulle være true).'); }
+        if (userGR.source == 'Integration: REST Countries API (Scripted)') { addSuccess('user', 'Værdi: "Source" er korrekt.'); } else { addError('user', 'Værdi: "Source" er FORKERT.'); }
+        if (userGR.notification == 2) { addSuccess('user', 'Værdi: "Notification" er korrekt (Disable).'); } else { addError('user', 'Værdi: "Notification" er FORKERT.'); }
+        if (gs.nil(userGR.edu_status)) { addSuccess('user', 'Værdi: "edu_status" er korrekt (tom).'); } else { addError('user', 'Værdi: "edu_status" er FORKERT (skulle være tom).'); }
+
+        var expectedRoles = ['rest_service', 'personalize_choices'];
+        var toleratedRoles = ['snc_internal', 'snc_required_script_writer_permission'];
+        var foundRoles = [], unexpectedRoles = [], missingRoles = expectedRoles.slice();
+        var userRolesGR = new GlideRecord('sys_user_has_role');
+        userRolesGR.addQuery('user', userGR.getUniqueValue());
+        userRolesGR.query();
+        while (userRolesGR.next()) {
+            var roleName = userRolesGR.getDisplayValue('role');
+            foundRoles.push(roleName);
+            var missingIndex = missingRoles.indexOf(roleName);
+            if (missingIndex > -1) { missingRoles.splice(missingIndex, 1); }
+            if (expectedRoles.indexOf(roleName) === -1 && toleratedRoles.indexOf(roleName) === -1) { unexpectedRoles.push(roleName); }
+        }
+        if (missingRoles.length === 0) { addSuccess('user', 'Rettigheder: De 2 nødvendige roller er tildelt.'); } else { addError('user', 'Rettigheder: Mangler roller: ' + missingRoles.join(', ')); }
+        addInfo('user', 'Total antal roller fundet: ' + foundRoles.length + ' (' + foundRoles.join(', ') + ')');
+        if (unexpectedRoles.length > 0) { addWarning('user', 'Brugeren har uventede roller: ' + unexpectedRoles.join(', ')); }
+
+        var toleratedGroups = ['Conditional Script Writer'];
+        var foundGroups = [], unexpectedGroups = [];
+        var userGroupsGR = new GlideRecord('sys_user_grmember');
+        userGroupsGR.addQuery('user', userGR.getUniqueValue());
+        userGroupsGR.query();
+        while(userGroupsGR.next()) {
+            var groupName = userGroupsGR.getDisplayValue('group');
+            foundGroups.push(groupName);
+            if (toleratedGroups.indexOf(groupName) === -1) { unexpectedGroups.push(groupName); }
+        }
+        addInfo('user', 'Total antal grupper fundet: ' + foundGroups.length + ' (' + (foundGroups.join(', ') || 'Ingen') + ')');
+        if (unexpectedGroups.length > 0) { addWarning('user', 'Brugeren er medlem af uventede grupper: ' + unexpectedGroups.join(', ')); }
+
+    } else {
+        addError('user', 'Bruger "integration.countries" blev IKKE fundet.');
+    }
+
+    // === 2. Tjek af Script Include ===
+    var siGR = new GlideRecord('sys_script_include');
+    if (siGR.get('name', 'CountryIntegration')) {
+        addSuccess('scriptInclude', 'Script Include "CountryIntegration" fundet.');
+        if (siGR.active == true) { addSuccess('scriptInclude', 'Script Include er aktivt.'); } else { addError('scriptInclude', 'Script Include er IKKE aktivt.'); }
+    } else {
+        addError('scriptInclude', 'Script Include "CountryIntegration" blev IKKE fundet.');
+    }
+
+    // === 3. Tjek af Lande-data ===
+    var choiceAgg = new GlideAggregate('sys_choice');
+    choiceAgg.addQuery('name', 'cmn_location');
+    choiceAgg.addQuery('element', 'country');
+    choiceAgg.addAggregate('COUNT');
+    choiceAgg.query();
+    var choiceCount = 0;
+    if (choiceAgg.next()) { choiceCount = choiceAgg.getAggregate('COUNT'); }
+    if (choiceCount > 200) { addSuccess('data', 'Der blev fundet ' + choiceCount + ' lande i valglisten.'); } else { addError('data', 'Der blev fundet færre end 200 lande (Antal: ' + choiceCount + ').'); }
+
+    // === 4. Tjek af Synkroniseringsjob ===
+    var syncJobGR = new GlideRecord('sysauto_script');
+    if (syncJobGR.get('name', 'Country Data Nightly Sync')) {
+        addSuccess('syncJob', 'Job "Country Data Nightly Sync" fundet.');
+        if (syncJobGR.active == true) { addSuccess('syncJob', 'Synkroniseringsjob er aktivt.'); } else { addError('syncJob', 'Synkroniseringsjob er IKKE aktivt.'); }
+        if (syncJobGR.run_as.getRefRecord().user_name == 'integration.countries') { addSuccess('syncJob', 'Kører som korrekt bruger.'); } else { addError('syncJob', 'Kører som FORKERT bruger.'); }
+        if (syncJobGR.run_dayofweek == 6) { addSuccess('syncJob', 'Er sat til lørdag.'); } else { addError('syncJob', 'Er sat til FORKERT ugedag.'); }
+    } else {
+        addError('syncJob', 'Job "Country Data Nightly Sync" blev IKKE fundet.');
+    }
+
+    // === 5. Tjek af Overvågningsjob ===
+    var monitorJobGR = new GlideRecord('sysauto_script');
+    if (monitorJobGR.get('name', 'Country Data Consistency Check')) {
+        addSuccess('monitorJob', 'Job "Country Data Consistency Check" fundet.');
+        if (monitorJobGR.active == true) { addSuccess('monitorJob', 'Overvågningsjob er aktivt.'); } else { addError('monitorJob', 'Overvågningsjob er IKKE aktivt.'); }
+        if (monitorJobGR.run_as.getRefRecord().user_name == 'integration.countries') { addSuccess('monitorJob', 'Kører som korrekt bruger.'); } else { addError('monitorJob', 'Kører som FORKERT bruger.'); }
+        if (monitorJobGR.run_dayofweek == 1) { addSuccess('monitorJob', 'Er sat til mandag.'); } else { addError('monitorJob', 'Er sat til FORKERT ugedag.'); }
+    } else {
+        addError('monitorJob', 'Job "Country Data Consistency Check" blev IKKE fundet.');
+    }
+
+    // === PRINT FINAL RAPPORT ===
+    function printSection(icon, title, sectionName) {
+        gs.info('\n' + icon + ' ' + title);
+        var sectionMessages = finalReport[sectionName];
+        if (sectionMessages.length === 0) {
+            gs.info('  (Ingen tjek udført for denne sektion)');
+        } else {
+            for (var i = 0; i < sectionMessages.length; i++) {
+                var msg = '  ' + sectionMessages[i];
+                if (msg.indexOf('❌') > -1) { gs.error(msg); }
+                else if (msg.indexOf('⚠️') > -1) { gs.warn(msg); }
+                else { gs.info(msg); }
+            }
+        }
+    }
+
+    gs.info('\n\n\n===========================================================');
+    gs.info('    RAPPORT FOR COUNTRY INTEGRATION INSTALLATION');
+    gs.info('===========================================================');
+    
+    printSection('👤', 'BRUGER (integration.countries)', 'user');
+    printSection('📜', 'SCRIPT INCLUDE (CountryIntegration)', 'scriptInclude');
+    printSection('🌍', 'DATA (Lande i valglisten)', 'data');
+    printSection('⚙️', 'JOB (Ugentlig Synkronisering)', 'syncJob');
+    printSection('⏰', 'JOB (Ugentlig Overvågning)', 'monitorJob');
+
+    gs.info('\n-------------------- OPSUMMERING --------------------');
+    if (finalReport.errors > 0) {
+        gs.error('❌ KONKLUSION: Installationen er IKKE korrekt. Der blev fundet ' + finalReport.errors + ' fejl.');
+    } else if (finalReport.warnings > 0) {
+        gs.warn('✅ KONKLUSION: Installationen virker, men der blev fundet ' + finalReport.warnings + ' advarsler (OBS-punkter), som bør gennemgås.');
+    } else {
+        gs.info('🎉 KONKLUSION: Perfekt! Installationen er fuldt ud valideret og er 100% korrekt.');
+    }
+    gs.info('===========================================================');
+
+})();

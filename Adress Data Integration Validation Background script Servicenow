@@ -1,112 +1,558 @@
-================================================================================
-*** Script: ENHANCED DAWA INTEGRATION VALIDATION REPORT (v3.0)
-*** Script: ================================================================================
-*** Script: 
-👤 USER & ROLE CONFIGURATION
-*** Script:   ✅ Integration user "dawa.integration" found
-*** Script:   ❌ Internal integration user flag: INCORRECT (should be true): no thrown error
-*** Script:   ⚠️ Web service access only: Should be true for security
-*** Script:   ❌ User account: INACTIVE: no thrown error
-*** Script:   ✅ Role assigned: rest_service
-*** Script:   ✅ Role assigned: x_dawa.integrator
-*** Script:   ℹ️ Total roles assigned: 3 (x_dawa.integrator, rest_service, snc_required_script_writer_permission)
-*** Script: 
-🛡️ SECURITY (Roles & ACLs)
-*** Script:   ✅ Custom role "x_dawa.integrator" found
-*** Script:   ✅ ACL (read) correctly linked to custom role
-*** Script:   ✅ ACL (write) correctly linked to custom role
-*** Script: 
-⚙️ CONFIGURATION & UI COMPONENTS
-*** Script:   ✅ Property "x_bgb.dawa.base_url" found
-*** Script:   ✅ Property value correct: https://api.dataforsyningen.dk
-*** Script:   ✅ Property "x_bgb.dawa.country_allowlist" found
-*** Script:   ✅ Property value correct: DK
-*** Script:   ⚠️ Property "x_bgb.dawa.validate.on_update" NOT FOUND
-*** Script:   ✅ UI Action "DAWA Normalize" found
-*** Script:   ❌ UI Action "DAWA Normalize" is INACTIVE: no thrown error
-*** Script:   ⚠️ UI Action "DAWA Normalize" is client-side (should be server-side)
-*** Script:   ✅ UI Action "DAWA Normalize" targets correct table
-*** Script:   ✅ UI Action "DAWA Debug Resolve" found
-*** Script:   ❌ UI Action "DAWA Debug Resolve" is INACTIVE: no thrown error
-*** Script:   ⚠️ UI Action "DAWA Debug Resolve" is client-side (should be server-side)
-*** Script:   ✅ UI Action "DAWA Debug Resolve" targets correct table
-*** Script:   ✅ UI Policy "DAWA: Country mandatory" found
-*** Script:   ❌ UI Policy is INACTIVE: no thrown error
-*** Script:   ✅ UI Policy Action: Country field correctly set to MANDATORY
-*** Script: 
-📡 OUTBOUND HTTP CONFIGURATION
-*** Script:   ✅ HTTP property configured: rest.outbound.ecc_agent.skip_domain.api.dataforsyningen.dk
-*** Script:   ℹ️ Value: true
-*** Script:   ✅ HTTP property configured: glide.outbound_http_enabled.api.dataforsyningen.dk
-*** Script:   ℹ️ Value: true
-*** Script:   ✅ HTTP property configured: glide.outbound_http_enabled
-*** Script:   ℹ️ Value: true
-*** Script:   ✅ HTTP property configured: com.glide.communications.httpclient.verify_revoked_certificates
-*** Script:   ℹ️ Value: false
-*** Script:   ✅ HTTP property configured: glide.rest.outbound.timeout
-*** Script:   ℹ️ Value: 30000
-*** Script: 
-📜 SCRIPT INCLUDE & API TESTING
-*** Script:   ✅ Script Include "DAWAAddressClient" found
-*** Script:   ❌ Script Include is INACTIVE: no thrown error
-*** Script:   ✅ Script Include access level: PUBLIC (correct)
-*** Script:   ✅ Script Include instantiation: SUCCESS
-*** Script:   ✅ Direct HTTP test: SUCCESS (Status 200)
-*** Script:   ✅ Direct HTTP response: Valid JSON with data
-*** Script:   ℹ️ Sample address ID: c508c198-38f5-4afc-a354-d8d8cca23ec8
-*** Script:   ⚠️ API test no results: "Rådhuspladsen 1, 1550" - {"q":"Rådhuspladsen 1, 1550"}
-*** Script:   ⚠️ API test no results: "Vesterbrogade 1, 1620" - {"q":"Vesterbrogade 1, 1620"}
-*** Script:   ⚠️ API test no results: "Nørrebrogade 1, 2200" - {"q":"Nørrebrogade 1, 2200"}
-*** Script:   ❌ API testing summary: 0/3 tests passed - API integration not working: no thrown error
-*** Script: 
-📊 DATABASE FIELDS
-*** Script:   ✅ Field "u_dawa_adresse_id" exists on cmn_location
-*** Script:   ✅ Field type correct: string
-*** Script:   ✅ Field length correct: 64
-*** Script:   ❌ Field "u_dawa_adresse_id" is INACTIVE: no thrown error
-*** Script:   ✅ Field label correct: "DAWA Adresse ID"
-*** Script:   ✅ Field "u_dawa_adgangsadresse_id" exists on cmn_location
-*** Script:   ✅ Field type correct: string
-*** Script:   ✅ Field length correct: 64
-*** Script:   ❌ Field "u_dawa_adgangsadresse_id" is INACTIVE: no thrown error
-*** Script:   ✅ Field label correct: "DAWA Adgangsadresse ID"
-*** Script:   ✅ Field "u_kommune_kode" exists on cmn_location
-*** Script:   ✅ Field type correct: string
-*** Script:   ✅ Field length correct: 40
-*** Script:   ❌ Field "u_kommune_kode" is INACTIVE: no thrown error
-*** Script:   ✅ Field label correct: "Kommune kode"
-*** Script:   ✅ Field "u_kommune_navn" exists on cmn_location
-*** Script:   ✅ Field type correct: string
-*** Script:   ✅ Field length correct: 100
-*** Script:   ❌ Field "u_kommune_navn" is INACTIVE: no thrown error
-*** Script:   ✅ Field label correct: "Kommune navn"
-*** Script: 
-🔄 SCHEDULED JOBS
-*** Script:   ✅ Weekly sync job found
-*** Script:   ⚠️ Weekly sync job is INACTIVE
-*** Script:   ✅ Weekly sync job runs as correct user: dawa.integration
-*** Script:   ✅ Weekly sync job script references DAWAAddressClient
-*** Script: 
-⏰ MONITORING JOBS
-*** Script:   ✅ Monthly monitoring job found
-*** Script:   ⚠️ Monthly monitoring job is INACTIVE
-*** Script: 
-📱 APPLICATION MODULES
-*** Script:   ✅ DAWA Integration application found
-*** Script:   ✅ Application module "Locations (DAWA)" found
-*** Script: 
-🔍 DIAGNOSTICS
-*** Script:   ℹ️ Validation completed in: 1970-01-01 00:00:02
-*** Script:   ℹ️ ServiceNow version: glide-zurich-07-01-2025__patch1-08-20-2025_09-08-2025_1328.zip
-*** Script:   ℹ️ Instance: dev320086
-*** Script:   ℹ️ Total validations performed: 78
-*** Script: 
-================================================================================
-*** Script: VALIDATION SUMMARY
-*** Script: ================================================================================
-*** Script: Total Validations: 79
-*** Script: Errors: 11
-*** Script: Warnings: 9
-*** Script: Success Rate: 86%
-*** Script: ❌ CONCLUSION: MAJOR ISSUES - 11 errors prevent proper operation: no thrown error
-*** Script: ================================================================================
+/***********************************************************************************************
+ * SCRIPT: Enhanced DAWA Integration Validation (v3.0 - Comprehensive)
+ * Purpose: Complete validation of all DAWA integration components with detailed diagnostics
+ * Author: Brian Gadeberg Buur (Concept) & Claude Sonnet 4 (Implementation)
+ * 
+ * Description: Validates user, roles, ACLs, fields, properties, UI components, scheduled jobs,
+ * outbound HTTP configuration, and performs comprehensive API testing with diagnostics.
+ * 
+ * Compatibility: Xanadu (Q3 2024), Yokohama (Q1 2025), Zurich (Q3/Q4 2025)
+ * Dependencies: DAWA integration components, admin privileges
+ * Performance: Expected execution time: 30-60 seconds
+ ***********************************************************************************************/
+
+(function validateDAWAInstallation_v3() {
+    'use strict';
+    
+    var VALIDATION_VERSION = 'v3.0';
+    var startTime = new GlideDateTime();
+    
+    var finalReport = {
+        user: [],
+        security: [],
+        configUI: [],
+        outboundHTTP: [],
+        scriptInclude: [],
+        data: [],
+        syncJob: [],
+        monitorJob: [],
+        application: [],
+        diagnostics: [],
+        errors: 0,
+        warnings: 0,
+        validationCount: 0
+    };
+
+    function addSuccess(section, msg) { 
+        finalReport[section].push('✅ ' + msg); 
+        finalReport.validationCount++;
+    }
+    
+    function addError(section, msg) { 
+        finalReport[section].push('❌ ' + msg); 
+        finalReport.errors++; 
+        finalReport.validationCount++;
+    }
+    
+    function addWarning(section, msg) { 
+        finalReport[section].push('⚠️ ' + msg); 
+        finalReport.warnings++; 
+        finalReport.validationCount++;
+    }
+    
+    function addInfo(section, msg) { 
+        finalReport[section].push('ℹ️ ' + msg); 
+        finalReport.validationCount++;
+    }
+
+    gs.info('[VALIDATION ' + VALIDATION_VERSION + '] Starting comprehensive DAWA integration validation');
+
+    // === 1. ENHANCED USER & ROLE VALIDATION ===
+    gs.info('[VALIDATION] Checking user and role configuration...');
+    
+    var userGR = new GlideRecord('sys_user');
+    if (userGR.get('user_name', 'dawa.integration')) {
+        addSuccess('user', 'Integration user "dawa.integration" found');
+        
+        // Validate user properties
+        if (userGR.getValue('internal_integration_user') == 'true') {
+            addSuccess('user', 'Internal integration user flag: CORRECT');
+        } else {
+            addError('user', 'Internal integration user flag: INCORRECT (should be true)');
+        }
+        
+        if (userGR.getValue('web_service_access_only') == 'true') {
+            addSuccess('user', 'Web service access only: CORRECT');
+        } else {
+            addWarning('user', 'Web service access only: Should be true for security');
+        }
+        
+        if (userGR.getValue('active') == 'true') {
+            addSuccess('user', 'User account: ACTIVE');
+        } else {
+            addError('user', 'User account: INACTIVE');
+        }
+        
+        // Enhanced role validation
+        var expectedRoles = ['rest_service', 'x_dawa.integrator'];
+        var foundRoles = [];
+        var userRolesGR = new GlideRecord('sys_user_has_role');
+        userRolesGR.addQuery('user', userGR.getUniqueValue());
+        userRolesGR.query();
+        
+        while (userRolesGR.next()) {
+            var roleName = userRolesGR.getDisplayValue('role');
+            foundRoles.push(roleName);
+        }
+        
+        expectedRoles.forEach(function(expectedRole) {
+            if (foundRoles.indexOf(expectedRole) > -1) {
+                addSuccess('user', 'Role assigned: ' + expectedRole);
+            } else {
+                addError('user', 'Missing role: ' + expectedRole);
+            }
+        });
+        
+        addInfo('user', 'Total roles assigned: ' + foundRoles.length + ' (' + foundRoles.join(', ') + ')');
+        
+    } else {
+        addError('user', 'Integration user "dawa.integration" NOT FOUND');
+    }
+
+    // === 2. ENHANCED SECURITY VALIDATION ===
+    gs.info('[VALIDATION] Checking security configuration...');
+    
+    var roleGR = new GlideRecord('sys_user_role');
+    if (roleGR.get('name', 'x_dawa.integrator')) {
+        addSuccess('security', 'Custom role "x_dawa.integrator" found');
+        
+        // Enhanced ACL validation with proper queries
+        function validateACLLink(operation) {
+            var aclGR = new GlideRecord('sys_security_acl');
+            aclGR.addQuery('name', 'cmn_location');
+            aclGR.addQuery('operation.name', operation);
+            aclGR.query();
+            
+            if (aclGR.next()) {
+                var aclSysId = aclGR.getUniqueValue();
+                
+                var aclRoleGR = new GlideRecord('sys_security_acl_role');
+                aclRoleGR.addQuery('sys_security_acl', aclSysId);
+                aclRoleGR.addQuery('sys_user_role', roleGR.getUniqueValue());
+                aclRoleGR.query();
+                
+                if (aclRoleGR.hasNext()) {
+                    addSuccess('security', 'ACL (' + operation + ') correctly linked to custom role');
+                    return true;
+                } else {
+                    addError('security', 'ACL (' + operation + ') NOT linked to custom role');
+                    return false;
+                }
+            } else {
+                addWarning('security', 'ACL for ' + operation + ' operation not found on cmn_location');
+                return false;
+            }
+        }
+        
+        validateACLLink('read');
+        validateACLLink('write');
+        
+    } else {
+        addError('security', 'Custom role "x_dawa.integrator" NOT FOUND');
+    }
+
+    // === 3. ENHANCED CONFIGURATION & UI VALIDATION ===
+    gs.info('[VALIDATION] Checking system properties and UI components...');
+    
+    // System properties validation
+    var requiredProperties = [
+        { name: 'x_bgb.dawa.base_url', expectedValue: 'https://api.dataforsyningen.dk', critical: true },
+        { name: 'x_bgb.dawa.country_allowlist', expectedValue: 'DK', critical: true },
+        { name: 'x_bgb.dawa.validate.on_update', expectedValue: 'true', critical: false }
+    ];
+    
+    requiredProperties.forEach(function(prop) {
+        var propGR = new GlideRecord('sys_properties');
+        if (propGR.get('name', prop.name)) {
+            addSuccess('configUI', 'Property "' + prop.name + '" found');
+            
+            var actualValue = propGR.getValue('value');
+            if (actualValue === prop.expectedValue) {
+                addSuccess('configUI', 'Property value correct: ' + prop.expectedValue);
+            } else {
+                var severity = prop.critical ? 'addError' : 'addWarning';
+                eval(severity)('configUI', 'Property value INCORRECT. Expected: "' + prop.expectedValue + '", Found: "' + actualValue + '"');
+            }
+        } else {
+            var severity = prop.critical ? 'addError' : 'addWarning';
+            eval(severity)('configUI', 'Property "' + prop.name + '" NOT FOUND');
+        }
+    });
+    
+    // UI Action validation
+    var uiActions = [
+        { name: 'x_dawa_normalize', label: 'DAWA Normalize' },
+        { name: 'x_dawa_debug', label: 'DAWA Debug Resolve' }
+    ];
+    
+    uiActions.forEach(function(action) {
+        var uiActionGR = new GlideRecord('sys_ui_action');
+        if (uiActionGR.get('name', action.name)) {
+            addSuccess('configUI', 'UI Action "' + action.label + '" found');
+            
+            if (uiActionGR.getValue('active') == 'true') {
+                addSuccess('configUI', 'UI Action "' + action.label + '" is ACTIVE');
+            } else {
+                addError('configUI', 'UI Action "' + action.label + '" is INACTIVE');
+            }
+            
+            if (uiActionGR.getValue('client') == 'false') {
+                addSuccess('configUI', 'UI Action "' + action.label + '" is server-side (correct)');
+            } else {
+                addWarning('configUI', 'UI Action "' + action.label + '" is client-side (should be server-side)');
+            }
+            
+            if (uiActionGR.getValue('table') === 'cmn_location') {
+                addSuccess('configUI', 'UI Action "' + action.label + '" targets correct table');
+            } else {
+                addError('configUI', 'UI Action "' + action.label + '" targets wrong table: ' + uiActionGR.getValue('table'));
+            }
+        } else {
+            addError('configUI', 'UI Action "' + action.label + '" NOT FOUND');
+        }
+    });
+
+    // UI Policy validation
+    var policyGR = new GlideRecord('sys_ui_policy');
+    if (policyGR.get('short_description', 'DAWA: Country mandatory (form only)')) {
+        addSuccess('configUI', 'UI Policy "DAWA: Country mandatory" found');
+        
+        if (policyGR.getValue('active') == 'true') {
+            addSuccess('configUI', 'UI Policy is ACTIVE');
+        } else {
+            addError('configUI', 'UI Policy is INACTIVE');
+        }
+        
+        // Check policy action
+        var policyActionGR = new GlideRecord('sys_ui_policy_action');
+        policyActionGR.addQuery('ui_policy', policyGR.getUniqueValue());
+        policyActionGR.addQuery('field', 'country');
+        policyActionGR.query();
+        
+        if (policyActionGR.next()) {
+            if (policyActionGR.getValue('mandatory') == 'true') {
+                addSuccess('configUI', 'UI Policy Action: Country field correctly set to MANDATORY');
+            } else {
+                addError('configUI', 'UI Policy Action: Country field NOT set to mandatory');
+            }
+        } else {
+            addError('configUI', 'UI Policy Action for country field NOT FOUND');
+        }
+    } else {
+        addError('configUI', 'UI Policy "DAWA: Country mandatory" NOT FOUND');
+    }
+
+    // === 4. OUTBOUND HTTP CONFIGURATION VALIDATION ===
+    gs.info('[VALIDATION] Checking outbound HTTP configuration...');
+    
+    var httpProperties = [
+        'rest.outbound.ecc_agent.skip_domain.api.dataforsyningen.dk',
+        'glide.outbound_http_enabled.api.dataforsyningen.dk',
+        'glide.outbound_http_enabled',
+        'com.glide.communications.httpclient.verify_revoked_certificates',
+        'glide.rest.outbound.timeout'
+    ];
+    
+    httpProperties.forEach(function(propName) {
+        var httpProp = new GlideRecord('sys_properties');
+        if (httpProp.get('name', propName)) {
+            addSuccess('outboundHTTP', 'HTTP property configured: ' + propName);
+            addInfo('outboundHTTP', 'Value: ' + httpProp.getValue('value'));
+        } else {
+            addWarning('outboundHTTP', 'HTTP property missing: ' + propName);
+        }
+    });
+
+    // === 5. ENHANCED SCRIPT INCLUDE & API TESTING ===
+    gs.info('[VALIDATION] Checking Script Include and performing API tests...');
+    
+    var siGR = new GlideRecord('sys_script_include');
+    if (siGR.get('name', 'DAWAAddressClient')) {
+        addSuccess('scriptInclude', 'Script Include "DAWAAddressClient" found');
+        
+        if (siGR.getValue('active') == 'true') {
+            addSuccess('scriptInclude', 'Script Include is ACTIVE');
+        } else {
+            addError('scriptInclude', 'Script Include is INACTIVE');
+        }
+        
+        if (siGR.getValue('access') === 'public') {
+            addSuccess('scriptInclude', 'Script Include access level: PUBLIC (correct)');
+        } else {
+            addWarning('scriptInclude', 'Script Include access level: ' + siGR.getValue('access') + ' (should be public)');
+        }
+        
+        // Enhanced API testing
+        try {
+            // Test 1: Script Include instantiation
+            var client = new global.DAWAAddressClient();
+            addSuccess('scriptInclude', 'Script Include instantiation: SUCCESS');
+            
+            // Test 2: Direct HTTP connectivity test
+            try {
+                var directTestRM = new sn_ws.RESTMessageV2();
+                directTestRM.setEndpoint('https://api.dataforsyningen.dk/adresser');
+                directTestRM.setHttpMethod('GET');
+                directTestRM.setQueryParameter('q', 'Rådhuspladsen');
+                directTestRM.setQueryParameter('per_side', '1');
+                directTestRM.setHttpTimeout(10000);
+                
+                var directResp = directTestRM.execute();
+                var directStatus = directResp.getStatusCode();
+                
+                if (directStatus === 200) {
+                    addSuccess('scriptInclude', 'Direct HTTP test: SUCCESS (Status 200)');
+                    
+                    try {
+                        var directData = JSON.parse(directResp.getBody());
+                        if (Array.isArray(directData) && directData.length > 0) {
+                            addSuccess('scriptInclude', 'Direct HTTP response: Valid JSON with data');
+                            addInfo('scriptInclude', 'Sample address ID: ' + (directData[0].id || 'unknown'));
+                        } else {
+                            addWarning('scriptInclude', 'Direct HTTP response: Valid JSON but no data');
+                        }
+                    } catch (parseError) {
+                        addWarning('scriptInclude', 'Direct HTTP response: Invalid JSON');
+                    }
+                } else {
+                    addError('scriptInclude', 'Direct HTTP test: FAILED (Status ' + directStatus + ')');
+                }
+            } catch (httpError) {
+                addError('scriptInclude', 'Direct HTTP test: EXCEPTION - ' + httpError.message);
+            }
+            
+            // Test 3: Script Include API call
+            var testAddresses = [
+                'Rådhuspladsen 1, 1550',
+                'Vesterbrogade 1, 1620',
+                'Nørrebrogade 1, 2200'
+            ];
+            
+            var successfulTests = 0;
+            testAddresses.forEach(function(testAddress) {
+                try {
+                    var result = client.resolveFromFreeText(testAddress);
+                    if (result && result.obj && result.obj.id) {
+                        addSuccess('scriptInclude', 'API test SUCCESS: "' + testAddress + '" -> ID: ' + result.obj.id);
+                        successfulTests++;
+                    } else if (result && result.diag) {
+                        addWarning('scriptInclude', 'API test no results: "' + testAddress + '" - ' + JSON.stringify(result.diag));
+                    } else {
+                        addError('scriptInclude', 'API test FAILED: "' + testAddress + '" - No result object');
+                    }
+                } catch (apiError) {
+                    addError('scriptInclude', 'API test EXCEPTION: "' + testAddress + '" - ' + apiError.message);
+                }
+            });
+            
+            if (successfulTests > 0) {
+                addSuccess('scriptInclude', 'API testing summary: ' + successfulTests + '/' + testAddresses.length + ' tests passed');
+            } else {
+                addError('scriptInclude', 'API testing summary: 0/' + testAddresses.length + ' tests passed - API integration not working');
+            }
+            
+            // Test 4: Address mapping functionality
+            try {
+                var mappingTestResult = client.resolveFromFreeText('Rådhuspladsen 1, 1550');
+                if (mappingTestResult && mappingTestResult.obj) {
+                    var mappedData = client.mapToCmnLocation(mappingTestResult.obj);
+                    if (mappedData && mappedData.u_dawa_adresse_id) {
+                        addSuccess('scriptInclude', 'Address mapping test: SUCCESS');
+                        addInfo('scriptInclude', 'Mapped fields: ' + Object.keys(mappedData).length);
+                    } else {
+                        addError('scriptInclude', 'Address mapping test: FAILED - No mapped data');
+                    }
+                }
+            } catch (mappingError) {
+                addError('scriptInclude', 'Address mapping test: EXCEPTION - ' + mappingError.message);
+            }
+            
+        } catch (e) {
+            addError('scriptInclude', 'Script Include instantiation FAILED: ' + e.message);
+        }
+    } else {
+        addError('scriptInclude', 'Script Include "DAWAAddressClient" NOT FOUND');
+    }
+
+    // === 6. ENHANCED DATA FIELD VALIDATION ===
+    gs.info('[VALIDATION] Checking database fields...');
+    
+    var expectedFields = [
+        { name: 'u_dawa_adresse_id', label: 'DAWA Adresse ID', type: 'string', length: '64' },
+        { name: 'u_dawa_adgangsadresse_id', label: 'DAWA Adgangsadresse ID', type: 'string', length: '64' },
+        { name: 'u_kommune_kode', label: 'Kommune kode', type: 'string', length: '40' },
+        { name: 'u_kommune_navn', label: 'Kommune navn', type: 'string', length: '100' }
+    ];
+
+    expectedFields.forEach(function(field) {
+        var fieldGR = new GlideRecord('sys_dictionary');
+        fieldGR.addQuery('name', 'cmn_location');
+        fieldGR.addQuery('element', field.name);
+        fieldGR.query();
+        
+        if (fieldGR.next()) {
+            addSuccess('data', 'Field "' + field.name + '" exists on cmn_location');
+            
+            // Validate field properties
+            var actualType = fieldGR.getValue('internal_type');
+            if (actualType === field.type) {
+                addSuccess('data', 'Field type correct: ' + field.type);
+            } else {
+                addError('data', 'Field type INCORRECT. Expected: ' + field.type + ', Found: ' + actualType);
+            }
+            
+            var actualLength = fieldGR.getValue('max_length');
+            if (actualLength === field.length) {
+                addSuccess('data', 'Field length correct: ' + field.length);
+            } else {
+                addWarning('data', 'Field length mismatch. Expected: ' + field.length + ', Found: ' + actualLength);
+            }
+            
+            if (fieldGR.getValue('active') == 'true') {
+                addSuccess('data', 'Field "' + field.name + '" is ACTIVE');
+            } else {
+                addError('data', 'Field "' + field.name + '" is INACTIVE');
+            }
+            
+            // Check if field has proper label
+            var actualLabel = fieldGR.getValue('column_label');
+            if (actualLabel === field.label) {
+                addSuccess('data', 'Field label correct: "' + field.label + '"');
+            } else {
+                addWarning('data', 'Field label mismatch. Expected: "' + field.label + '", Found: "' + actualLabel + '"');
+            }
+            
+        } else {
+            addError('data', 'Field "' + field.name + '" NOT FOUND on cmn_location');
+        }
+    });
+
+    // === 7. SCHEDULED JOBS VALIDATION ===
+    gs.info('[VALIDATION] Checking scheduled jobs...');
+    
+    var syncJobGR = new GlideRecord('sysauto_script');
+    if (syncJobGR.get('name', 'DAWA Data Weekly Sync')) {
+        addSuccess('syncJob', 'Weekly sync job found');
+        
+        if (syncJobGR.getValue('active') == 'true') {
+            addSuccess('syncJob', 'Weekly sync job is ACTIVE');
+        } else {
+            addWarning('syncJob', 'Weekly sync job is INACTIVE');
+        }
+        
+        var runAsUser = syncJobGR.run_as.getRefRecord();
+        if (runAsUser && runAsUser.getValue('user_name') === 'dawa.integration') {
+            addSuccess('syncJob', 'Weekly sync job runs as correct user: dawa.integration');
+        } else {
+            addError('syncJob', 'Weekly sync job runs as WRONG user: ' + (runAsUser ? runAsUser.getValue('user_name') : 'unknown'));
+        }
+        
+        // Validate job script content
+        var jobScript = syncJobGR.getValue('script');
+        if (jobScript && jobScript.indexOf('DAWAAddressClient') > -1) {
+            addSuccess('syncJob', 'Weekly sync job script references DAWAAddressClient');
+        } else {
+            addError('syncJob', 'Weekly sync job script does NOT reference DAWAAddressClient');
+        }
+        
+    } else {
+        addError('syncJob', 'Weekly sync job "DAWA Data Weekly Sync" NOT FOUND');
+    }
+    
+    var monitorJobGR = new GlideRecord('sysauto_script');
+    if (monitorJobGR.get('name', 'DAWA Data Consistency Check')) {
+        addSuccess('monitorJob', 'Monthly monitoring job found');
+        
+        if (monitorJobGR.getValue('active') == 'true') {
+            addSuccess('monitorJob', 'Monthly monitoring job is ACTIVE');
+        } else {
+            addWarning('monitorJob', 'Monthly monitoring job is INACTIVE');
+        }
+    } else {
+        addError('monitorJob', 'Monthly monitoring job "DAWA Data Consistency Check" NOT FOUND');
+    }
+
+    // === 8. APPLICATION MODULE VALIDATION ===
+    gs.info('[VALIDATION] Checking application module...');
+    
+    var appGR = new GlideRecord('sys_app_application');
+    if (appGR.get('title', 'DAWA Integration')) {
+        addSuccess('application', 'DAWA Integration application found');
+        
+        // Check for application module
+        var moduleGR = new GlideRecord('sys_app_module');
+        moduleGR.addQuery('application', appGR.getUniqueValue());
+        moduleGR.addQuery('title', 'Locations (DAWA)');
+        moduleGR.query();
+        
+        if (moduleGR.hasNext()) {
+            addSuccess('application', 'Application module "Locations (DAWA)" found');
+        } else {
+            addWarning('application', 'Application module "Locations (DAWA)" not found');
+        }
+    } else {
+        addWarning('application', 'DAWA Integration application not found');
+    }
+
+    // === 9. DIAGNOSTICS AND SYSTEM INFO ===
+    var endTime = new GlideDateTime();
+    var duration = GlideDateTime.subtract(startTime, endTime);
+    
+    addInfo('diagnostics', 'Validation completed in: ' + duration);
+    addInfo('diagnostics', 'ServiceNow version: ' + gs.getProperty('glide.war'));
+    addInfo('diagnostics', 'Instance: ' + gs.getProperty('instance_name', 'unknown'));
+    addInfo('diagnostics', 'Total validations performed: ' + finalReport.validationCount);
+
+    // === FINAL REPORT ===
+    function printSection(icon, title, sectionName) {
+        if (finalReport[sectionName].length > 0) {
+            gs.info('\n' + icon + ' ' + title);
+            finalReport[sectionName].forEach(function(msg) {
+                var indentedMsg = '  ' + msg;
+                if (indentedMsg.indexOf('❌') > -1) { 
+                    gs.error(indentedMsg); 
+                } else if (indentedMsg.indexOf('⚠️') > -1) { 
+                    gs.warn(indentedMsg); 
+                } else { 
+                    gs.info(indentedMsg); 
+                }
+            });
+        }
+    }
+
+    gs.info('\n\n' + '='.repeat(80));
+    gs.info('ENHANCED DAWA INTEGRATION VALIDATION REPORT (' + VALIDATION_VERSION + ')');
+    gs.info('='.repeat(80));
+    
+    printSection('👤', 'USER & ROLE CONFIGURATION', 'user');
+    printSection('🛡️', 'SECURITY (Roles & ACLs)', 'security');
+    printSection('⚙️', 'CONFIGURATION & UI COMPONENTS', 'configUI');
+    printSection('📡', 'OUTBOUND HTTP CONFIGURATION', 'outboundHTTP');
+    printSection('📜', 'SCRIPT INCLUDE & API TESTING', 'scriptInclude');
+    printSection('📊', 'DATABASE FIELDS', 'data');
+    printSection('🔄', 'SCHEDULED JOBS', 'syncJob');
+    printSection('⏰', 'MONITORING JOBS', 'monitorJob');
+    printSection('📱', 'APPLICATION MODULES', 'application');
+    printSection('🔍', 'DIAGNOSTICS', 'diagnostics');
+    
+    gs.info('\n' + '='.repeat(80));
+    gs.info('VALIDATION SUMMARY');
+    gs.info('='.repeat(80));
+    gs.info('Total Validations: ' + finalReport.validationCount);
+    gs.info('Errors: ' + finalReport.errors);
+    gs.info('Warnings: ' + finalReport.warnings);
+    gs.info('Success Rate: ' + Math.round(((finalReport.validationCount - finalReport.errors) / finalReport.validationCount) * 100) + '%');
+    
+    if (finalReport.errors === 0 && finalReport.warnings === 0) {
+        gs.info('🎉 CONCLUSION: PERFECT! All validations passed - DAWA integration is 100% functional');
+    } else if (finalReport.errors === 0) {
+        gs.warn('✅ CONCLUSION: FUNCTIONAL with ' + finalReport.warnings + ' warnings - DAWA integration works but has minor issues');
+    } else if (finalReport.errors <= 3) {
+        gs.warn('⚠️ CONCLUSION: PARTIALLY FUNCTIONAL - ' + finalReport.errors + ' errors need attention');
+    } else {
+        gs.error('❌ CONCLUSION: MAJOR ISSUES - ' + finalReport.errors + ' errors prevent proper operation');
+    }
+    
+    gs.info('='.repeat(80));
+    
+})();

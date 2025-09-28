@@ -115,3 +115,4 @@ Denne løsning er blevet markant forbedret til at inkludere følgende enterprise
 * **Multisprogs-understøttelse**: Brug ServiceNow's oversættelses-framework til at vise landenavne baseret på brugerens sprog.
 * **Monitoring Dashboard**: Byg et dashboard, der visualiserer data fra de System Properties, som overvågningsjobbet opretter.
 * **Avanceret UI**: En admin-grænseflade til konfiguration og manuel start af synkronisering.
+* **edu_status er ikke uden værdi. kommentar fra valideringsscript i ny instans

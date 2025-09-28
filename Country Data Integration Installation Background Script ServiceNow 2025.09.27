@@ -1,10 +1,10 @@
 /****************************************************************************************
-* SCRIPT: Country Integration Installation (v5.0)
-* Formål: Opretter alle komponenter (bruger, SI, jobs) som admin og starter
-* den indledende datasynkronisering som integrationsbrugeren.
+* SCRIPT: Country Integration Installation (v6.0 - Performance Optimeret)
+* Formål: Opretter alle komponenter og bruger setWorkflow(false) for hurtigere
+* indsættelse af records under den indledende synkronisering.
 ****************************************************************************************/
 (function() {
-    gs.info('### SETUP (v5.0): Starting Installation ###');
+    gs.info('### SETUP (v6.0): Starting Installation ###');
 
     // ===== Trin 1: Opret den sikre integrationsbruger =====
     var userSysId;
@@ -67,7 +67,7 @@
         '    syncCountries: function() { try { gs.info("CountryIntegration: Starting sync"); var countries = this.fetchCountries(); if (!countries) { return {success: false, message: "No data received"}; } return this.updateChoices(countries); } catch (error) { return {success: false, message: error.message}; } },\n' +
         '    fetchCountries: function() { try { var request = new sn_ws.RESTMessageV2(); request.setEndpoint(this.apiUrl); request.setHttpMethod("GET"); request.setRequestTimeout(this.timeout); var response = request.execute(); if (response.getStatusCode() == 200) { return this.parseResponse(response.getBody()); } else { gs.error("API error: Failed to fetch countries. Status code: " + response.getStatusCode()); return null; } } catch (error) { gs.error("API exception: " + error.message); return null; } },\n' +
         '    parseResponse: function(body) { try { var data = JSON.parse(body); var countries = []; for (var i = 0; i < data.length; i++) { var country = data[i]; if (country.name && country.cca2) { countries.push({ name: country.name.common, code: country.cca2 }); } } countries.sort(function(a, b) { return a.name.localeCompare(b.name); }); return countries; } catch (error) { gs.error("Parse error: " + error.message); return null; } },\n' +
-        '    updateChoices: function(countries) { var result = {success: true, added: 0, updated: 0, total: countries.length}; var existingChoices = {}; var choiceGR = new GlideRecord("sys_choice"); choiceGR.addQuery("name", this.tableName); choiceGR.addQuery("element", "country"); choiceGR.query(); while (choiceGR.next()) { existingChoices[choiceGR.getValue("value")] = { label: choiceGR.getValue("label"), sys_id: choiceGR.getUniqueValue() }; } for (var i = 0; i < countries.length; i++) { var country = countries[i]; if (!existingChoices[country.code]) { var newChoice = new GlideRecord("sys_choice"); newChoice.initialize(); newChoice.setValue("name", this.tableName); newChoice.setValue("element", "country"); newChoice.setValue("value", country.code); newChoice.setValue("label", country.name); newChoice.setValue("sequence", (i + 1) * 10); if (newChoice.insert()) { result.added++; } } else if (existingChoices[country.code].label !== country.name) { var updateChoice = new GlideRecord("sys_choice"); if(updateChoice.get(existingChoices[country.code].sys_id)) { updateChoice.setValue("label", country.name); updateChoice.update(); result.updated++; } } } result.message = "Added " + result.added + ", Updated " + result.updated + " countries"; gs.info("CountryIntegration: Sync complete. " + result.message); return result; }\n' +
+        '    updateChoices: function(countries) { var result = {success: true, added: 0, updated: 0, total: countries.length}; var existingChoices = {}; var choiceGR = new GlideRecord("sys_choice"); choiceGR.addQuery("name", this.tableName); choiceGR.addQuery("element", "country"); choiceGR.query(); while (choiceGR.next()) { existingChoices[choiceGR.getValue("value")] = { label: choiceGR.getValue("label"), sys_id: choiceGR.getUniqueValue() }; } for (var i = 0; i < countries.length; i++) { var country = countries[i]; if (!existingChoices[country.code]) { var newChoice = new GlideRecord("sys_choice"); newChoice.initialize(); newChoice.setWorkflow(false); /* <-- PERFORMANCE OPTIMERING */ newChoice.setValue("name", this.tableName); newChoice.setValue("element", "country"); newChoice.setValue("value", country.code); newChoice.setValue("label", country.name); newChoice.setValue("sequence", (i + 1) * 10); if (newChoice.insert()) { result.added++; } } else if (existingChoices[country.code].label !== country.name) { var updateChoice = new GlideRecord("sys_choice"); if(updateChoice.get(existingChoices[country.code].sys_id)) { updateChoice.setValue("label", country.name); updateChoice.update(); result.updated++; } } } result.message = "Added " + result.added + ", Updated " + result.updated + " countries"; gs.info("CountryIntegration: Sync complete. " + result.message); return result; }\n' +
         '};';
     siGR.setValue('name', 'CountryIntegration');
     siGR.setValue('script', scriptCode);
@@ -127,6 +127,6 @@
         gs.error('--> Could not trigger initial sync job.');
     }
 
-    gs.info('### SETUP (v5.0): Installation script complete. ###');
+    gs.info('### SETUP (v6.0): Installation script complete. ###');
 
 })();

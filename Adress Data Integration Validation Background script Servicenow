@@ -1,0 +1,159 @@
+/****************************************************************************************
+ * SCRIPT: Komplet Validering af DAWA Integration (v2.0 - Dybdegående)
+ * Formål: Tjekker alle komponenter, inkl. live API-kald, property-værdier og
+ * detaljeret UI-opsætning.
+ ****************************************************************************************/
+(function validateDAWAInstallation_v2() {
+    var finalReport = {
+        user: [],
+        security: [],
+        configUI: [],
+        scriptInclude: [],
+        data: [],
+        syncJob: [],
+        monitorJob: [],
+        errors: 0,
+        warnings: 0
+    };
+
+    function addSuccess(section, msg) { finalReport[section].push('✅ ' + msg); }
+    function addError(section, msg) { finalReport[section].push('❌ ' + msg); finalReport.errors++; }
+    function addWarning(section, msg) { finalReport[section].push('⚠️ ' + msg); finalReport.warnings++; }
+    function addInfo(section, msg) { finalReport[section].push('ℹ️ ' + msg); }
+
+    // === 1. Bruger & Roller ===
+    var userGR = new GlideRecord('sys_user');
+    if (userGR.get('user_name', 'dawa.integration')) {
+        addSuccess('user', 'Bruger "dawa.integration" fundet.');
+        if (userGR.internal_integration_user == true) { addSuccess('user', 'Værdi: "Internal integration user" er korrekt (true).'); } else { addError('user', 'Værdi: "Internal integration user" er FORKERT.'); }
+        var expectedRoles = ['rest_service', 'x_dawa.integrator'];
+        var missingRoles = expectedRoles.slice();
+        var userRolesGR = new GlideRecord('sys_user_has_role');
+        userRolesGR.addQuery('user', userGR.getUniqueValue());
+        userRolesGR.query();
+        while (userRolesGR.next()) {
+            var roleName = userRolesGR.getDisplayValue('role');
+            var missingIndex = missingRoles.indexOf(roleName);
+            if (missingIndex > -1) { missingRoles.splice(missingIndex, 1); }
+        }
+        if (missingRoles.length === 0) { addSuccess('user', 'Rettigheder: De 2 nødvendige roller er tildelt.'); } else { addError('user', 'Rettigheder: Mangler roller: ' + missingRoles.join(', ')); }
+    } else {
+        addError('user', 'Bruger "dawa.integration" blev IKKE fundet.');
+    }
+
+    // === 2. Sikkerhed (Rolle & ACLs) ===
+    var roleGR = new GlideRecord('sys_user_role');
+    if (roleGR.get('name', 'x_dawa.integrator')) {
+        addSuccess('security', 'Rolle "x_dawa.integrator" fundet i Global scope.');
+        var aclReadGR = new GlideRecord('sys_security_acl_role');
+        if (aclReadGR.get('sys_user_role.name=x_dawa.integrator^sys_security_acl.name=cmn_location^sys_security_acl.operation.name=read')) { addSuccess('security', 'ACL (read) for cmn_location er korrekt tilknyttet rollen.'); } else { addError('security', 'ACL (read) for cmn_location blev IKKE fundet for rollen.'); }
+        var aclWriteGR = new GlideRecord('sys_security_acl_role');
+        if (aclWriteGR.get('sys_user_role.name=x_dawa.integrator^sys_security_acl.name=cmn_location^sys_security_acl.operation.name=write')) { addSuccess('security', 'ACL (write) for cmn_location er korrekt tilknyttet rollen.'); } else { addError('security', 'ACL (write) for cmn_location blev IKKE fundet for rollen.'); }
+    } else {
+        addError('security', 'Rolle "x_dawa.integrator" blev IKKE fundet.');
+    }
+
+    // === 3. Konfiguration & UI ===
+    var propUrl = new GlideRecord('sys_properties');
+    if (propUrl.get('name', 'x_bgb.dawa.base_url')) {
+        addSuccess('configUI', 'Property "base_url" fundet.');
+        if (propUrl.getValue('value') == 'https://api.dataforsyningen.dk') { addSuccess('configUI', 'Værdi: Base URL er korrekt.'); } else { addError('configUI', 'Værdi: Base URL er FORKERT.'); }
+    } else { addError('configUI', 'Property "base_url" blev IKKE fundet.'); }
+    
+    var uiAction1 = new GlideRecord('sys_ui_action');
+    if (uiAction1.get('name', 'x_dawa_normalize')) {
+        addSuccess('configUI', 'UI Action "DAWA Normalize" fundet.');
+        if (uiAction1.active == true) { addSuccess('configUI', 'Status: UI Action er aktiv.'); } else { addError('configUI', 'Status: UI Action er IKKE aktiv.'); }
+        if (uiAction1.client == false) { addSuccess('configUI', 'Type: UI Action er korrekt (Server-side).'); } else { addError('configUI', 'Type: UI Action er FORKERT (skulle være Server-side).'); }
+    } else { addError('configUI', 'UI Action "DAWA Normalize" blev IKKE fundet.'); }
+
+    var policyGR = new GlideRecord('sys_ui_policy');
+    if(policyGR.get('short_description', 'DAWA: Country mandatory (form only)')) {
+        addSuccess('configUI', 'UI Policy "DAWA: Country mandatory" fundet.');
+        var policyActionGR = new GlideRecord('sys_ui_policy_action');
+        if(policyActionGR.get('ui_policy=' + policyGR.getUniqueValue() + '^field=country^mandatory=true')) {
+            addSuccess('configUI', 'UI Policy Action: "country" er korrekt sat til Mandatory.');
+        } else { addError('configUI', 'UI Policy Action: "country" er IKKE korrekt sat til Mandatory.'); }
+    } else { addError('configUI', 'UI Policy "DAWA: Country mandatory" blev IKKE fundet.'); }
+
+    // === 4. Script Include & Live API Test ===
+    var siGR = new GlideRecord('sys_script_include');
+    if (siGR.get('name', 'DAWAAddressClient')) {
+        addSuccess('scriptInclude', 'Script Include "DAWAAddressClient" fundet i Global scope.');
+        try {
+            var client = new global.DAWAAddressClient();
+            var testAddress = 'Rådhuspladsen 1, 1550';
+            var result = client.resolveFromFreeText(testAddress);
+            if (result && result.obj && result.obj.id) {
+                addSuccess('scriptInclude', 'Live API-kaldstest: Succesfuldt opslag for "' + testAddress + '".');
+            } else {
+                addError('scriptInclude', 'Live API-kaldstest: Opslag for "' + testAddress + '" fejlede. Tjek outbound access og API URL.');
+            }
+        } catch (e) {
+            addError('scriptInclude', 'Live API-kaldstest: Scriptet kastede en fejl under API-kald: ' + e.message);
+        }
+    } else {
+        addError('scriptInclude', 'Script Include "DAWAAddressClient" blev IKKE fundet.');
+    }
+
+    // === 5. Data (Felter) ===
+    var fields = ['u_dawa_adresse_id', 'u_dawa_adgangsadresse_id', 'u_kommune_kode', 'u_kommune_navn'];
+    fields.forEach(function(fieldName) {
+        var fieldGR = new GlideRecord('sys_dictionary');
+        if (fieldGR.get('name=cmn_location^element=' + fieldName)) {
+            addSuccess('data', 'Felt "' + fieldName + '" fundet på cmn_location i Global scope.');
+        } else {
+            addError('data', 'Felt "' + fieldName + '" blev IKKE fundet på cmn_location.');
+        }
+    });
+
+    // === 6. Jobs ===
+    var syncJobGR = new GlideRecord('sysauto_script');
+    if (syncJobGR.get('name', 'DAWA Data Weekly Sync')) {
+        addSuccess('syncJob', 'Job "DAWA Data Weekly Sync" fundet.');
+        if (syncJobGR.active == true) { addSuccess('syncJob', 'Synkroniseringsjob er aktivt.'); } else { addWarning('syncJob', 'Synkroniseringsjob er IKKE aktivt.'); }
+        if (syncJobGR.run_as.getRefRecord().user_name == 'dawa.integration') { addSuccess('syncJob', 'Kører som korrekt bruger.'); } else { addError('syncJob', 'Kører som FORKERT bruger.'); }
+    } else {
+        addError('syncJob', 'Job "DAWA Data Weekly Sync" blev IKKE fundet.');
+    }
+    
+    var monitorJobGR = new GlideRecord('sysauto_script');
+    if (monitorJobGR.get('name', 'DAWA Data Consistency Check')) {
+        addSuccess('monitorJob', 'Job "DAWA Data Consistency Check" fundet.');
+    } else {
+        addError('monitorJob', 'Job "DAWA Data Consistency Check" blev IKKE fundet.');
+    }
+
+    // === PRINT FINAL RAPPORT ===
+    function printSection(icon, title, sectionName) {
+        gs.info('\n' + icon + ' ' + title);
+        finalReport[sectionName].forEach(function(msg) {
+            var indentedMsg = '  ' + msg;
+            if (indentedMsg.indexOf('❌') > -1) { gs.error(indentedMsg); }
+            else if (indentedMsg.indexOf('⚠️') > -1) { gs.warn(indentedMsg); }
+            else { gs.info(indentedMsg); }
+        });
+    }
+
+    gs.info('\n\n\n===========================================================');
+    gs.info('RAPPORT FOR DAWA INTEGRATION INSTALLATION (v2.0)');
+    gs.info('===========================================================');
+    printSection('👤', 'BRUGER & ROLLER', 'user');
+    printSection('🛡️', 'SIKKERHED (Rolle & ACLs)', 'security');
+    printSection('⚙️', 'KONFIGURATION & UI', 'configUI');
+    printSection('📜', 'SCRIPT INCLUDE & LIVE API TEST', 'scriptInclude');
+    printSection('📊', 'DATA (Felter på cmn_location)', 'data');
+    printSection('🔄', 'JOB (Ugentlig Synkronisering)', 'syncJob');
+    printSection('⏰', 'JOB (Månedlig Overvågning)', 'monitorJob');
+    gs.info('\n===========================================================');
+    gs.info('OPSUMMERING');
+    gs.info('===========================================================');
+    if (finalReport.errors > 0) {
+        gs.error('❌ KONKLUSION: Installationen er IKKE korrekt. Der blev fundet ' + finalReport.errors + ' fejl.');
+    } else if (finalReport.warnings > 0) {
+        gs.warn('✅ KONKLUSION: Installationen virker, men der blev fundet ' + finalReport.warnings + ' advarsler, som bør gennemgås.');
+    } else {
+        gs.info('🎉 KONKLUSION: Perfekt! Installationen er fuldt ud valideret og er 100% korrekt.');
+    }
+    gs.info('===========================================================');
+})();

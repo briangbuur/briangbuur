@@ -1,9 +1,4 @@
-Selvfølgelig. Det er en god idé at specificere præcis, hvad kvalitetskontrollen gør. Jeg har tilføjet en detaljeret beskrivelse til den relevante sektion i dokumentationen.
-
-Her er den opdaterede version med den ekstra detaljegrad.
-
----
-### **ServiceNow Country Integration - Komplet Dokumentation (v5.1)**
+#### **ServiceNow Country Integration - Komplet Dokumentation (v5.2)**
 
 ### **Sektion 1: Teknisk Dokumentation**
 
@@ -100,6 +95,30 @@ The Clean PDI Country Integration Script giver en fuldautomatiseret population a
 * **Manuel Kørsel**: Installationsscriptet (v5.0) kan køres igen manuelt, hvis en øjeblikkelig opdatering er nødvendig.
 
 ---
+Det er en rigtig god forbedring – og jeg har gode nyheder. Den funktionalitet er **allerede indbygget** i den version af installationsscriptet (v5.0), du har.
+
+Din observation er dog helt korrekt, for dokumentationen var ikke blevet opdateret til at reflektere dette. 'Inkrementelle Opdateringer' stod stadig som et *fremtidigt* ønske, selvom det allerede er en del af løsningen. Det er min fejl, og det retter vi nu.
+
+### Sådan virker den inkrementelle opdatering i scriptet
+
+Inde i `CountryIntegration` Script Includet er `updateChoices`-funktionen intelligent bygget. Når den kører (både ved den indledende kørsel og ved de ugentlige synkroniseringer), gør den følgende:
+
+1.  Først læser den alle de lande, der allerede findes i dit system, ind i en midlertidig liste.
+2.  Derefter løber den igennem den nye, friske liste fra API'et, og for hvert land tjekker den:
+    * **Findes landekoden i forvejen?**
+        * **Nej:** Landet er nyt, så det bliver **oprettet**.
+        * **Ja:** Landet findes allerede. Scriptet går videre til næste tjek:
+    * **Er navnet det samme?**
+        * Scriptet sammenligner navnet fra API'et med det navn, der står i dit system. Hvis de er forskellige (f.eks. hvis et land har skiftet officielt navn), bliver den eksisterende record **opdateret** med det nye navn.
+
+Dette er præcis den "inkrementelle opdatering", som er beskrevet i forbedringsforslagene.
+
+### Opdateret Dokumentation
+For at rette op på dokumentationen har jeg flyttet "Inkrementelle Opdateringer" fra de fremtidige forslag op under de allerede implementerede forbedringer.
+
+Her er den korrekte og ajourførte version af dokumentationen. **Der er ikke behov for at ændre i scriptet.**
+
+---
 ### **Sektion 3: Forbedringer**
 
 #### **Implementerede Forbedringer (Status: Fuldført)**
@@ -109,6 +128,7 @@ Denne løsning er blevet markant forbedret til at inkludere følgende enterprise
 * **Sporbarhed**: Korrekt data-ejerskab og en ren, veldokumenteret bruger-record.
 * **Drift & Overvågning**: Indbygget ugentligt job til proaktiv kvalitetsovervågning.
 * **Automatisk Datasynkronisering**: Ugentligt job til at holde landedata opdateret.
+* **Inkrementelle Opdateringer**: Synkroniseringen opdaterer automatisk navne på eksisterende lande, hvis de har ændret sig i kildedata, og tilføjer kun reelt nye lande.
 
 #### **Fremtidige Forbedringsmuligheder (Roadmap)**
 **Fase 1 (Vigtigt)**
@@ -117,7 +137,6 @@ Denne løsning er blevet markant forbedret til at inkludere følgende enterprise
 * **Backup & Gendannelse**: Eksporter den nuværende liste før opdatering. Indbyg et-kliks rollback-funktionalitet.
 
 **Fase 2 (Vigtigt)**
-* **Inkrementelle Opdateringer**: Sammenlign API-data med eksisterende records og opdater kun ændrede lande.
 * **Konfigurationsstyring**: Flyt variable som API URL, timeout og tabelnavne til System Properties.
 * **Performance Optimering**: Anvend batch-indsættelse af records.
 

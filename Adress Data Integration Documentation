@@ -1,0 +1,145 @@
+***
+### **ServiceNow DAWA Integration - Complete Documentation (v3.1)**
+
+### **Section 1: Technical Documentation**
+
+#### **Overview & Business Value**
+This solution enriches and validates `cmn_location` records in ServiceNow with authoritative Danish address data from DAWA – Denmark's Address Web API. The purpose is to standardize user-entered addresses, store the official DAWA IDs (for both `adresse` and `adgangsadresse`), add municipality metadata, and enforce data quality directly on the form via mandatory fields. The solution is designed to be installed, validated, and maintained via a series of custom-built scripts to ensure a robust, enterprise-ready integration.
+
+---
+#### **Architecture Components**
+**1. Installation Script (v3.1.0 - Robust ACL Handling)**
+* **Purpose**: A unified, idempotent script that creates and configures all necessary components in ServiceNow from a clean start.
+* **Function**: Creates the user, role, ACL assignments, Script Include, UI components, all scheduled jobs, and triggers the first full data synchronization.
+
+**2. Validation Script (v2.0 - In-depth)**
+* **Purpose**: A separate, read-only script used to verify that all components have been created and configured correctly in the proper scope.
+* **Function**: Generates a sectioned report in the system log that gives a full status of the installation, including a live API call to test connectivity.
+
+**3. Integration User**
+* **Name**: `dawa.integration`
+* **Purpose**: A dedicated system user that owns and executes all integration logic (both manual actions via UI Actions and automated jobs).
+* **Security**: Configured with `web_service_access_only` and `internal_integration_user`. The password is system-generated and unknown.
+* **Roles**: `rest_service`, `x_dawa.integrator`.
+
+**4. DAWAAddressClient Script Include**
+* **Class**: `DAWAAddressClient`
+* **Purpose**: Encapsulates all logic for communicating with DAWA's REST API, parsing results, and mapping data to the `cmn_location` table fields.
+* **Access Level**: `public`.
+
+**5. Scheduled Job (Weekly Data Synchronization)**
+* **Name**: `DAWA Data Weekly Sync`
+* **Purpose**: Re-normalizes all existing Danish locations to ensure ongoing data quality.
+* **Execution**: Every Sunday at 03:00 AM.
+
+**6. Scheduled Job (Weekly Quality Control)**
+* **Name**: `DAWA Data Consistency Check`
+* **Purpose**: Monitors data quality by counting the number of Danish locations that are missing a DAWA ID.
+
+---
+#### **External API: DAWA (Denmark's Address Web API)**
+* **API Index & Documentation**: `https://dawadocs.dataforsyningen.dk/dok/api`
+* **Endpoints Used**:
+    * Addresses: `/adresser`
+    * Access Addresses: `/adgangsadresser`
+    * Autocomplete: `/autocomplete`
+
+---
+#### **Data Model & Schema**
+* **Table**: `cmn_location`
+* **Added Fields**:
+    * `u_dawa_adresse_id` (String, 64)
+    * `u_dawa_adgangsadresse_id` (String, 64)
+    * `u_kommune_kode` (String, 40)
+    * `u_kommune_navn` (String, 100)
+* **Field Mapping**:
+    * `street`: Composed of `vejnavn`, `husnr`, `etage`, and `dør`.
+    * `zip`: From `postnr`.
+    * `city`: From `postnrnavn`.
+    * `country`: Set to "Denmark".
+    * `u_dawa_adresse_id`: From `adresse.id`.
+    * `u_dawa_adgangsadresse_id`: From `adgangsadresse.id`.
+    * `u_kommune_kode/navn`: From `kommune.kode` and `kommune.navn`.
+
+---
+#### **Technical Specifications**
+* **API Integration**: HTTPS REST (GET), no API key required.
+* **Data Processing**: Normalization occurs via a best-effort search strategy: Autocomplete -> Search -> Resolve by ID.
+* **Database Operations**: Uses `GlideRecord`. In background jobs and fix scripts, `setWorkflow(false)` is used for better performance.
+* **Performance**: API calls are optimized by requesting `struktur=mini` where possible.
+* **Security**: All logic runs as the dedicated, privilege-limited `dawa.integration` user. Requires outbound HTTPS (port 443) access to `api.dataforsyningen.dk`.
+* **Logging**: All log messages are prefixed with `DAWA-*` and can be found in `System Logs > All`.
+
+***
+
+### **Section 2: Step-by-Step User Guide**
+
+#### **Prerequisites**
+* ServiceNow `admin` privileges.
+* Access to "System Definition > Scripts - Background".
+* Outbound internet access from the ServiceNow instance to `api.dataforsyningen.dk`.
+
+---
+#### **Installation Procedure**
+This two-step procedure ensures a clean and correct installation on a new instance.
+
+**Step 1: Run the Installation Script**
+1.  **IMPORTANT**: Navigate to `System Definition > Scripts - Background` and **confirm your scope is set to "Global"**.
+2.  Copy the **entire** **Installation Script (v3.1.0)** into the text field.
+3.  Click the **"Run script"** button and wait for it to complete.
+
+**Step 2: Run the Validation Script**
+1.  In the same `Scripts - Background` window, now replace the previous script with the **entire** **Validation Script (v2.0)**.
+2.  Click the **"Run script"** button.
+
+---
+#### **Verify Success**
+1.  Review the report generated by the validation script.
+2.  Look for the final conclusion at the bottom of the report: `🎉 CONCLUSION: Perfect! The installation is fully validated and is 100% correct.`
+
+---
+#### **Test the Integration (Happy Path)**
+1.  Navigate to `Locations (DAWA) > Locations (DAWA)` and click **"New"**.
+2.  Fill in the fields:
+    * **Country** = `Denmark`
+    * **Street** = `Rådhuspladsen 1`
+    * **ZIP** = `1550`
+    * **City** = `København V`
+3.  Click **"Save"**.
+4.  Click the **"DAWA → Normalize"** button.
+5.  Confirm that you see an info message and that the **DAWA ID** and **Kommune** fields are now populated.
+
+---
+#### **Maintenance**
+* **Automatic Synchronization**: Data is maintained automatically by the weekly jobs.
+* **Manual Update**: The installation script can be run again to update components to the latest version. It is idempotent and will not harm existing data.
+
+***
+
+### **Section 3: Enhancements**
+
+#### **Implemented Enhancements (Status: Complete)**
+This solution was built with enterprise-grade features:
+* **Security & Identity**: A dedicated, secure integration user with correct, limited privileges.
+* **Architecture**: Fully automated one-click installation and validation.
+* **Idempotency**: The installation script can be run multiple times without causing errors.
+* **Operations & Monitoring**: A built-in weekly job for proactive monitoring of data quality.
+* **Automatic Data Synchronization**: A weekly job to keep location data up-to-date.
+
+---
+#### **Future Enhancements (Roadmap from Backlog)**
+**Phase 1 (High Importance)**
+* **Improved Error Handling**: Implement retry logic with exponential backoff for HTTP errors and a circuit-breaker pattern for repeated failures.
+* **Client-side Autocomplete**: Use GlideAjax to call DAWA's autocomplete endpoint as the user types in the address fields to reduce typos.
+* **Health Check**: A daily job that pings a known DAWA endpoint to monitor uptime and performance, capable of raising an event on failure.
+
+**Phase 2 (Medium Importance)**
+* **Data Model Expansion**: Persist latitude and longitude from DAWA and add separate, read-only fields for floor and door number.
+* **Backfill Scheduler**: An optional, nightly job to normalize legacy data created before the integration was installed. The batch size can be controlled via a system property.
+* **ATF Tests**: Build Automated Test Framework tests that create, normalize, and delete a location to ensure functionality during platform upgrades.
+
+**Phase 3 (Nice to Have)**
+* **Monitoring Dashboard**: A dashboard with KPIs such as the percentage of normalized addresses, errors per day, and median API response time.
+* **Daily Status Email**: An automated email (as requested by Brian) with daily key metrics (number normalized, number of errors, etc.).
+* **Packaging**: Bundle the entire solution into a Scoped App or an Update Set for easier distribution.
+* **Multi-country Strategy**: Expand the solution to handle address services from other countries (e.g., Sweden, Norway) based on the `country` field.

@@ -1,4 +1,5 @@
-#### **ServiceNow Country Integration - Komplet Dokumentation (v5.2)**
+---
+### **ServiceNow Country Integration - Komplet Dokumentation (v5.3 - Korrigeret)**
 
 ### **Sektion 1: Teknisk Dokumentation**
 
@@ -6,11 +7,11 @@
 The Clean PDI Country Integration Script giver en fuldautomatiseret population af ServiceNow's lokationstabel (`cmn_location`) med lande-valglister ved hjælp af REST Countries API'et. Løsningen opretter en sikker integrationsbruger, et genanvendeligt Script Include, og automatiske jobs til både synkronisering og overvågning.
 
 #### **Arkitektur Komponenter**
-**1. Installationsscript (v5.0)**
+**1. Installationsscript (v6.0 - Performance Optimeret)**
 * **Formål**: Et samlet script, der opretter og konfigurerer alle nødvendige komponenter i ServiceNow.
 * **Funktion**: Opretter bruger, roller, Script Include, begge planlagte jobs (synkronisering og overvågning), og starter den første datasynkronisering.
 
-**2. Valideringsscript (v2.4)**
+**2. Valideringsscript (v2.5 - Endelig Polish)**
 * **Formål**: Et separat, skrivebeskyttet script, der bruges til at verificere, at alle komponenter fra installationsscriptet er oprettet og konfigureret korrekt.
 * **Funktion**: Genererer en letlæselig, sektioneret rapport i loggen, der giver en fuld status på installationen.
 
@@ -33,12 +34,6 @@ The Clean PDI Country Integration Script giver en fuldautomatiseret population a
 **6. Scheduled Job (Ugentlig Kvalitetskontrol)**
 * **Navn**: `Country Data Consistency Check`
 * **Formål**: Overvåger datakvaliteten af de eksisterende lande.
-* **Eksekvering**: Hver mandag kl. 02:00.
-* **Kontroller**: Jobbet tjekker for følgende potentielle dataproblemer:
-    * **Ugyldigt Format**: Sikrer at alle landekoder består af præcis to store bogstaver (f.eks. "US", ikke "usa" eller "U.S.").
-    * **Dubletter**: Verificerer at den samme landekode ikke optræder flere gange i listen.
-    * **Manglende Sortering**: Tjekker at alle lande har et sekvensnummer, der styrer den alfabetiske sortering.
-    * **Specifik Verifikation**: Bekræfter at "Danmark" (DK) er til stede på listen.
 
 #### **Ekstern API: REST Countries**
 * **API Hjemmeside & Dokumentation**: `https://restcountries.com/`
@@ -71,13 +66,13 @@ The Clean PDI Country Integration Script giver en fuldautomatiseret population a
 #### **Installationsprocedure**
 **Trin 1: Kør Installationsscriptet**
 1. Naviger til `System Definition > Scripts - Background`.
-2. Kopier **hele** **Installationsscriptet (v5.0)** ind i tekstfeltet.
+2. Kopier **hele** **Installationsscriptet (v6.0)** ind i tekstfeltet.
 3. Klik på knappen **"Run script"**.
-4. Vent på, at scriptet fuldfører. Loggen vil bekræfte, at opsætningen er færdig, og at den indledende synkronisering er startet i baggrunden.
+4. Vent på, at scriptet fuldfører.
 
 **Trin 2: Kør Valideringsscriptet**
 1. **Vent ca. 30-60 sekunder** for at sikre, at den indledende datasynkronisering er færdig.
-2. I samme `Scripts - Background`-vindue, erstat nu det forrige script med **hele** **Valideringsscriptet (v2.4)**.
+2. I samme `Scripts - Background`-vindue, erstat nu det forrige script med **hele** **Valideringsscriptet (v2.5)**.
 3. Klik på knappen **"Run script"**.
 
 **Trin 3: Verificer Success**
@@ -92,31 +87,7 @@ The Clean PDI Country Integration Script giver en fuldautomatiseret population a
 #### **Vedligeholdelse og Datasynkronisering**
 * **Automatisk Synkronisering**: Landedata bliver automatisk opdateret hver lørdag nat via `Country Data Nightly Sync`-jobbet.
 * **Løbende Overvågning**: Det ugentlige `Country Data Consistency Check`-job sikrer løbende overvågning.
-* **Manuel Kørsel**: Installationsscriptet (v5.0) kan køres igen manuelt, hvis en øjeblikkelig opdatering er nødvendig.
-
----
-Det er en rigtig god forbedring – og jeg har gode nyheder. Den funktionalitet er **allerede indbygget** i den version af installationsscriptet (v5.0), du har.
-
-Din observation er dog helt korrekt, for dokumentationen var ikke blevet opdateret til at reflektere dette. 'Inkrementelle Opdateringer' stod stadig som et *fremtidigt* ønske, selvom det allerede er en del af løsningen. Det er min fejl, og det retter vi nu.
-
-### Sådan virker den inkrementelle opdatering i scriptet
-
-Inde i `CountryIntegration` Script Includet er `updateChoices`-funktionen intelligent bygget. Når den kører (både ved den indledende kørsel og ved de ugentlige synkroniseringer), gør den følgende:
-
-1.  Først læser den alle de lande, der allerede findes i dit system, ind i en midlertidig liste.
-2.  Derefter løber den igennem den nye, friske liste fra API'et, og for hvert land tjekker den:
-    * **Findes landekoden i forvejen?**
-        * **Nej:** Landet er nyt, så det bliver **oprettet**.
-        * **Ja:** Landet findes allerede. Scriptet går videre til næste tjek:
-    * **Er navnet det samme?**
-        * Scriptet sammenligner navnet fra API'et med det navn, der står i dit system. Hvis de er forskellige (f.eks. hvis et land har skiftet officielt navn), bliver den eksisterende record **opdateret** med det nye navn.
-
-Dette er præcis den "inkrementelle opdatering", som er beskrevet i forbedringsforslagene.
-
-### Opdateret Dokumentation
-For at rette op på dokumentationen har jeg flyttet "Inkrementelle Opdateringer" fra de fremtidige forslag op under de allerede implementerede forbedringer.
-
-Her er den korrekte og ajourførte version af dokumentationen. **Der er ikke behov for at ændre i scriptet.**
+* **Manuel Kørsel**: Installationsscriptet kan køres igen manuelt, hvis en øjeblikkelig opdatering er nødvendig.
 
 ---
 ### **Sektion 3: Forbedringer**
@@ -124,11 +95,12 @@ Her er den korrekte og ajourførte version af dokumentationen. **Der er ikke beh
 #### **Implementerede Forbedringer (Status: Fuldført)**
 Denne løsning er blevet markant forbedret til at inkludere følgende enterprise-grade features:
 * **Sikkerhed & Identitet**: Dedikeret, sikker integrationsbruger med korrekt licenshåndtering.
-* **Arkitektur**: Fuldautomatiseret én-kliks installation via et 'dirigent'-script.
+* **Arkitektur**: Fuldautomatiseret én-kliks installation.
 * **Sporbarhed**: Korrekt data-ejerskab og en ren, veldokumenteret bruger-record.
 * **Drift & Overvågning**: Indbygget ugentligt job til proaktiv kvalitetsovervågning.
 * **Automatisk Datasynkronisering**: Ugentligt job til at holde landedata opdateret.
-* **Inkrementelle Opdateringer**: Synkroniseringen opdaterer automatisk navne på eksisterende lande, hvis de har ændret sig i kildedata, og tilføjer kun reelt nye lande.
+* **Inkrementelle Opdateringer**: Synkroniseringen opdaterer automatisk navne på eksisterende lande, hvis de har ændret sig i kildedata.
+* **Performance Optimering**: Anvender `setWorkflow(false)` for at accelerere den indledende, store indsættelse af records.
 
 #### **Fremtidige Forbedringsmuligheder (Roadmap)**
 **Fase 1 (Vigtigt)**
@@ -138,7 +110,6 @@ Denne løsning er blevet markant forbedret til at inkludere følgende enterprise
 
 **Fase 2 (Vigtigt)**
 * **Konfigurationsstyring**: Flyt variable som API URL, timeout og tabelnavne til System Properties.
-* **Performance Optimering**: Anvend batch-indsættelse af records.
 
 **Fase 3 (Rart at have)**
 * **Multisprogs-understøttelse**: Brug ServiceNow's oversættelses-framework til at vise landenavne baseret på brugerens sprog.

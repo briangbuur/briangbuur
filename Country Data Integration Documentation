@@ -1,4 +1,9 @@
-### **ServiceNow Country Integration - Komplet Dokumentation (v3.0 - Detaljeret)**
+Selvfølgelig. Det er en god idé at specificere præcis, hvad kvalitetskontrollen gør. Jeg har tilføjet en detaljeret beskrivelse til den relevante sektion i dokumentationen.
+
+Her er den opdaterede version med den ekstra detaljegrad.
+
+---
+### **ServiceNow Country Integration - Komplet Dokumentation (v5.1)**
 
 ### **Sektion 1: Teknisk Dokumentation**
 
@@ -6,30 +11,39 @@
 The Clean PDI Country Integration Script giver en fuldautomatiseret population af ServiceNow's lokationstabel (`cmn_location`) med lande-valglister ved hjælp af REST Countries API'et. Løsningen opretter en sikker integrationsbruger, et genanvendeligt Script Include, og automatiske jobs til både synkronisering og overvågning.
 
 #### **Arkitektur Komponenter**
-**1. All-Inclusive Installationsscript**
-* **Formål**: Et 'dirigent'-script (version v3.00), der automatiserer hele opsætningen i én kørsel.
-* **Funktion**: Opretter de nedenstående komponenter og sikrer korrekt ejerskab og sporbarhed.
+**1. Installationsscript (v5.0)**
+* **Formål**: Et samlet script, der opretter og konfigurerer alle nødvendige komponenter i ServiceNow.
+* **Funktion**: Opretter bruger, roller, Script Include, begge planlagte jobs (synkronisering og overvågning), og starter den første datasynkronisering.
 
-**2. Integration User**
+**2. Valideringsscript (v2.4)**
+* **Formål**: Et separat, skrivebeskyttet script, der bruges til at verificere, at alle komponenter fra installationsscriptet er oprettet og konfigureret korrekt.
+* **Funktion**: Genererer en letlæselig, sektioneret rapport i loggen, der giver en fuld status på installationen.
+
+**3. Integration User**
 * **Navn**: `integration.countries`
 * **Formål**: En dedikeret systembruger, der ejer og eksekverer al integration.
 * **Sikkerhed**: Konfigureret med `web_service_access_only` og `internal_integration_user`. Adgangskode er ukendt.
 * **Rettigheder**: `rest_service`, `personalize_choices`.
 
-**3. CountryIntegration Script Include**
+**4. CountryIntegration Script Include**
 * **Klasse**: `CountryIntegration`
 * **Access Level**: `package_private`
 * **Dependencies**: `sn_ws.RESTMessageV2`, `GlideRecord`
 
-**4. Scheduled Job (Ugentlig Datasynkronisering)**
+**5. Scheduled Job (Ugentlig Datasynkronisering)**
 * **Navn**: `Country Data Nightly Sync`
 * **Formål**: Henter nye og opdaterer eksisterende landedata fra REST Countries API'et.
 * **Eksekvering**: Hver lørdag kl. 04:00.
 
-**5. Scheduled Job (Ugentlig Kvalitetskontrol)**
+**6. Scheduled Job (Ugentlig Kvalitetskontrol)**
 * **Navn**: `Country Data Consistency Check`
 * **Formål**: Overvåger datakvaliteten af de eksisterende lande.
 * **Eksekvering**: Hver mandag kl. 02:00.
+* **Kontroller**: Jobbet tjekker for følgende potentielle dataproblemer:
+    * **Ugyldigt Format**: Sikrer at alle landekoder består af præcis to store bogstaver (f.eks. "US", ikke "usa" eller "U.S.").
+    * **Dubletter**: Verificerer at den samme landekode ikke optræder flere gange i listen.
+    * **Manglende Sortering**: Tjekker at alle lande har et sekvensnummer, der styrer den alfabetiske sortering.
+    * **Specifik Verifikation**: Bekræfter at "Danmark" (DK) er til stede på listen.
 
 #### **Ekstern API: REST Countries**
 * **API Hjemmeside & Dokumentation**: `https://restcountries.com/`
@@ -60,27 +74,30 @@ The Clean PDI Country Integration Script giver en fuldautomatiseret population a
 * Udgående internetforbindelse til `restcountries.com`.
 
 #### **Installationsprocedure**
-**Trin 1: Kør All-Inclusive Scriptet**
-1.  Naviger til `System Definition > Scripts - Background`.
-2.  Kopier **hele** 'All-Inclusive Country Integration Script (v3.00)' ind i tekstfeltet.
-3.  Klik på knappen **"Run script"**.
-4.  Vent på, at scriptet fuldfører. Følg status i log-outputtet nederst på siden.
+**Trin 1: Kør Installationsscriptet**
+1. Naviger til `System Definition > Scripts - Background`.
+2. Kopier **hele** **Installationsscriptet (v5.0)** ind i tekstfeltet.
+3. Klik på knappen **"Run script"**.
+4. Vent på, at scriptet fuldfører. Loggen vil bekræfte, at opsætningen er færdig, og at den indledende synkronisering er startet i baggrunden.
 
-**Trin 2: Verificer Success**
-1.  **I loggen fra scriptet**, se efter disse bekræftelser:
-    * `### ORCHESTRATOR: User setup complete...`
-    * `### ORCHESTRATOR: Job triggered...`
-2.  **Gå til `System Logs > System Log > All`** og filtrer på beskeder, der starter med `### INTEGRATION JOB`. Her bør du se bekræftelser på, at de enkelte dele er oprettet.
+**Trin 2: Kør Valideringsscriptet**
+1. **Vent ca. 30-60 sekunder** for at sikre, at den indledende datasynkronisering er færdig.
+2. I samme `Scripts - Background`-vindue, erstat nu det forrige script med **hele** **Valideringsscriptet (v2.4)**.
+3. Klik på knappen **"Run script"**.
 
-**Trin 3: Test Integrationen**
-1.  Gå til `Locations > All` (eller `Configuration > Location`) og opret en ny lokation for at teste.
-2.  Klik på dropdown-menuen for **Country**-feltet.
-3.  Bekræft at listen nu indeholder ca. 250 lande, sorteret alfabetisk.
+**Trin 3: Verificer Success**
+1. Gennemgå den sektionerede rapport, som valideringsscriptet genererer i log-outputtet.
+2. Se efter den endelige konklusion i bunden af rapporten: `🎉 KONKLUSION: Perfekt! Installationen er fuldt ud valideret og er 100% korrekt.`
+
+**Trin 4: Test Integrationen**
+1. Gå til `Locations > All` (eller `Configuration > Location`) og opret en ny lokation for at teste.
+2. Klik på dropdown-menuen for **Country**-feltet.
+3. Bekræft at listen nu indeholder ca. 250 lande, sorteret alfabetisk.
 
 #### **Vedligeholdelse og Datasynkronisering**
 * **Automatisk Synkronisering**: Landedata bliver automatisk opdateret hver lørdag nat via `Country Data Nightly Sync`-jobbet.
 * **Løbende Overvågning**: Det ugentlige `Country Data Consistency Check`-job sikrer løbende overvågning.
-* **Manuel Kørsel**: 'All-Inclusive'-scriptet kan køres igen manuelt, hvis en øjeblikkelig opdatering er nødvendig.
+* **Manuel Kørsel**: Installationsscriptet (v5.0) kan køres igen manuelt, hvis en øjeblikkelig opdatering er nødvendig.
 
 ---
 ### **Sektion 3: Forbedringer**

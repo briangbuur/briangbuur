@@ -1,7 +1,7 @@
 /****************************************************************************************
-* SCRIPT: Komplet Validering af Country Integration (v2.4 - Finpudset Rapport)
+* SCRIPT: Komplet Validering af Country Integration (v2.7 - Final Design)
 * Formål: Tjekker alle komponenter og genererer en letlæselig, sektioneret
-* rapport med ikoner og præcise meddelelser.
+* rapport med 100% konsistent design i outputtet.
 ****************************************************************************************/
 (function() {
     var finalReport = {
@@ -121,7 +121,7 @@
     }
 
     gs.info('\n\n\n===========================================================');
-    gs.info('    RAPPORT FOR COUNTRY INTEGRATION INSTALLATION');
+    gs.info('RAPPORT FOR COUNTRY INTEGRATION INSTALLATION');
     gs.info('===========================================================');
     
     printSection('👤', 'BRUGER (integration.countries)', 'user');
@@ -130,7 +130,9 @@
     printSection('⚙️', 'JOB (Ugentlig Synkronisering)', 'syncJob');
     printSection('⏰', 'JOB (Ugentlig Overvågning)', 'monitorJob');
 
-    gs.info('\n-------------------- OPSUMMERING --------------------');
+    gs.info('\n===========================================================');
+    gs.info('OPSUMMERING');
+    gs.info('===========================================================');
     if (finalReport.errors > 0) {
         gs.error('❌ KONKLUSION: Installationen er IKKE korrekt. Der blev fundet ' + finalReport.errors + ' fejl.');
     } else if (finalReport.warnings > 0) {

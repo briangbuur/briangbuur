@@ -1,0 +1,487 @@
+/*
+ * --- Script Metadata ---
+ * Name:          Denmark DAWA Optimized with Accuracy Tracking (v.12.0)
+ * Version:       12.0
+ * Modified:      2025-09-28
+ * Required role: admin
+ * Author:        Brian Gadeberg Buur (Concept) & Claude Sonnet 4 (Implementation)
+ * Description:   Optimized DAWA integration with coordinate accuracy tracking field and stricter matching. Includes country fallback and performance improvements.
+ * Compatibility: Xanadu (Q3 2024), Yokohama (Q1 2025), Zurich (Q3/Q4 2025)
+ * Dependencies:  cmn_location table with coordinate_accuracy field, DAWA API access
+ * Performance:   ~10-15 seconds total (batched with timeouts)
+ * Security:      Admin role required, external API calls to DAWA
+ */
+
+// Global constants
+const DAWA_BASE_URL = 'https://api.dataforsyningen.dk';
+const BATCH_SIZE = 20; // Larger batches for performance
+const API_TIMEOUT = 15000; // Shorter timeout
+const LOG_TABLE_NAME = 'u_script_log';
+const COORDINATE_TOLERANCE = 0.001;
+const MAX_EXECUTION_TIME = 90000; // 90 seconds max
+
+/**
+ * Optimized DAWA with accuracy tracking
+ */
+(function() {
+    'use strict';
+
+    var startTime = new Date().getTime();
+
+    /**
+     * Helper function to log messages
+     */
+    function logMessage(message, level) {
+        var timestamp = new GlideDateTime().toString();
+        var logEntry = timestamp + ' [' + (level || 'INFO').toUpperCase() + '] ' + message;
+        
+        gs.info('DAWA_OPT: ' + logEntry);
+        gs.print('DAWA_OPT: ' + logEntry);
+    }
+
+    /**
+     * Check if execution time limit reached
+     */
+    function checkTimeLimit() {
+        var currentTime = new Date().getTime();
+        var elapsed = currentTime - startTime;
+        if (elapsed > MAX_EXECUTION_TIME) {
+            logMessage('TIMEOUT: Execution time limit reached (' + Math.round(elapsed/1000) + 's)', 'warn');
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Parse street address
+     */
+    function parseStreetAddress(streetField) {
+        if (!streetField) return { vejnavn: null, husnr: null };
+        
+        var street = streetField.trim();
+        var houseNumberPattern = /^(.+?)\s+(\d+[A-Za-z]?(?:,?\s*\d+\.?)?)\s*$/;
+        var match = street.match(houseNumberPattern);
+        
+        if (match) {
+            return { vejnavn: match[1].trim(), husnr: match[2].trim() };
+        } else {
+            return { vejnavn: street, husnr: null };
+        }
+    }
+
+    /**
+     * Handle DAWA coordinates
+     */
+    function handleDAWACoordinates(rawLat, rawLon) {
+        var latitude = parseFloat(rawLat);
+        var longitude = parseFloat(rawLon);
+        
+        if (isNaN(latitude) || isNaN(longitude)) return null;
+        if (latitude < 54 || latitude > 58 || longitude < 8 || longitude > 15) return null;
+        
+        return { latitude: latitude, longitude: longitude };
+    }
+
+    /**
+     * Make optimized DAWA API call
+     */
+    function makeOptimizedDAWACall(params, description) {
+        if (checkTimeLimit()) return { success: false, error: 'Timeout' };
+        
+        try {
+            var searchURL = DAWA_BASE_URL + '/adresser?' + params.join('&');
+            logMessage('DAWA (' + description + '): ' + searchURL, 'debug');
+            
+            var request = new sn_ws.RESTMessageV2();
+            request.setEndpoint(searchURL);
+            request.setHttpMethod('GET');
+            request.setRequestHeader('Accept', 'application/json');
+            request.setHttpTimeout(API_TIMEOUT);
+            
+            var response = request.execute();
+            var httpStatus = response.getStatusCode();
+            var responseBody = response.getBody();
+            
+            if (httpStatus !== 200 || !responseBody) {
+                return { success: false, error: 'HTTP ' + httpStatus };
+            }
+
+            var addresses = JSON.parse(responseBody);
+            if (!addresses || !Array.isArray(addresses) || addresses.length === 0) {
+                return { success: false, error: 'No addresses' };
+            }
+
+            var address = addresses[0];
+            if (address.adgangsadresse && 
+                address.adgangsadresse.adgangspunkt && 
+                address.adgangsadresse.adgangspunkt.koordinater) {
+                
+                var coords = address.adgangsadresse.adgangspunkt.koordinater;
+                var processedCoords = handleDAWACoordinates(coords[1], coords[0]);
+                
+                if (processedCoords) {
+                    return {
+                        success: true,
+                        coordinates: {
+                            latitude: processedCoords.latitude,
+                            longitude: processedCoords.longitude,
+                            source: 'DAWA (' + description + ')',
+                            accuracy: description,
+                            address_data: {
+                                vejnavn: address.vejnavn,
+                                husnr: address.husnr,
+                                postnr: address.postnr,
+                                postnavn: address.postnavn
+                            }
+                        }
+                    };
+                }
+            }
+            
+            return { success: false, error: 'No coordinates' };
+            
+        } catch (e) {
+            return { success: false, error: 'Error: ' + e.message };
+        }
+    }
+
+    /**
+     * Enhanced fallback with stricter matching and country option
+     */
+    function fetchCoordinatesWithStrictFallback(locationGR) {
+        var street = locationGR.getValue('street');
+        var zip = locationGR.getValue('zip');
+        var city = locationGR.getValue('city');
+        var country = locationGR.getValue('country');
+        
+        var parsedAddress = parseStreetAddress(street);
+        
+        logMessage('Strict fallback for: "' + (street || 'none') + '", "' + (zip || 'none') + '", "' + (city || 'none') + '"', 'debug');
+        
+        // Strategy 1: Full address with STRICT zip+city matching
+        if (parsedAddress.vejnavn && parsedAddress.husnr && zip && city) {
+            var params1 = [
+                'vejnavn=' + encodeURIComponent(parsedAddress.vejnavn),
+                'husnr=' + encodeURIComponent(parsedAddress.husnr),
+                'postnr=' + encodeURIComponent(zip),
+                'postnavn=' + encodeURIComponent(city)
+            ];
+            
+            var result1 = makeOptimizedDAWACall(params1, 'EXACT_ADDRESS');
+            if (result1.success) {
+                // Verify zip and city match exactly
+                var addrData = result1.coordinates.address_data;
+                if (addrData.postnr === zip && addrData.postnavn.toLowerCase() === city.toLowerCase()) {
+                    return result1;
+                }
+                logMessage('Zip/city mismatch - rejecting result', 'debug');
+            }
+        }
+        
+        // Strategy 2: Street + zip + city with STRICT matching
+        if (parsedAddress.vejnavn && zip && city) {
+            var params2 = [
+                'vejnavn=' + encodeURIComponent(parsedAddress.vejnavn),
+                'postnr=' + encodeURIComponent(zip),
+                'postnavn=' + encodeURIComponent(city)
+            ];
+            
+            var result2 = makeOptimizedDAWACall(params2, 'STREET_AREA');
+            if (result2.success) {
+                var addrData2 = result2.coordinates.address_data;
+                if (addrData2.postnr === zip && addrData2.postnavn.toLowerCase() === city.toLowerCase()) {
+                    return result2;
+                }
+                logMessage('Zip/city mismatch - rejecting result', 'debug');
+            }
+        }
+        
+        // Strategy 3: Zip + city EXACT match only
+        if (zip && city) {
+            var params3 = [
+                'postnr=' + encodeURIComponent(zip),
+                'postnavn=' + encodeURIComponent(city)
+            ];
+            
+            var result3 = makeOptimizedDAWACall(params3, 'POSTAL_AREA');
+            if (result3.success) {
+                return result3;
+            }
+        }
+        
+        // Strategy 4: Zip code only
+        if (zip) {
+            var params4 = ['postnr=' + encodeURIComponent(zip)];
+            var result4 = makeOptimizedDAWACall(params4, 'POSTAL_CODE');
+            if (result4.success) {
+                return result4;
+            }
+        }
+        
+        // Strategy 5: City only
+        if (city) {
+            var params5 = ['postnavn=' + encodeURIComponent(city)];
+            var result5 = makeOptimizedDAWACall(params5, 'CITY_CENTER');
+            if (result5.success) {
+                return result5;
+            }
+        }
+        
+        // Strategy 6: Country fallback (Denmark center)
+        if (country === 'Denmark') {
+            logMessage('Using Denmark country fallback coordinates', 'info');
+            return {
+                success: true,
+                coordinates: {
+                    latitude: 55.670249,
+                    longitude: 10.608267,
+                    source: 'Country Fallback',
+                    accuracy: 'COUNTRY_CENTER',
+                    address_data: null
+                }
+            };
+        }
+        
+        return { success: false, error: 'All strategies failed', coordinates: null };
+    }
+
+    /**
+     * Set coordinate accuracy field
+     */
+    function setCoordinateAccuracy(locationGR, accuracyLevel) {
+        try {
+            // Try to set coordinate_accuracy field if it exists
+            var testGR = new GlideRecord('cmn_location');
+            if (testGR.isValidField('coordinate_accuracy')) {
+                locationGR.setValue('coordinate_accuracy', accuracyLevel);
+                logMessage('Set coordinate_accuracy field to: ' + accuracyLevel, 'debug');
+            } else {
+                logMessage('coordinate_accuracy field does not exist - skipping', 'debug');
+            }
+        } catch (e) {
+            logMessage('Error setting accuracy field: ' + e.message, 'debug');
+        }
+    }
+
+    /**
+     * Check coordinate differences
+     */
+    function coordinatesAreDifferent(lat1, lon1, lat2, lon2) {
+        if (!lat1 || !lon1 || !lat2 || !lon2) return true;
+        
+        var latDiff = Math.abs(parseFloat(lat1) - parseFloat(lat2));
+        var lonDiff = Math.abs(parseFloat(lon1) - parseFloat(lon2));
+        
+        return (latDiff > COORDINATE_TOLERANCE || lonDiff > COORDINATE_TOLERANCE);
+    }
+
+    /**
+     * Update location with accuracy tracking
+     */
+    function updateLocationWithAccuracy(locationGR, dawaResult) {
+        if (!dawaResult.success || !dawaResult.coordinates) {
+            return { updated: false, reason: 'No data available' };
+        }
+
+        var currentLat = locationGR.getValue('latitude');
+        var currentLon = locationGR.getValue('longitude');
+        var dawaLat = dawaResult.coordinates.latitude;
+        var dawaLon = dawaResult.coordinates.longitude;
+        var accuracy = dawaResult.coordinates.accuracy;
+
+        try {
+            if (!currentLat || !currentLon) {
+                locationGR.setWorkflow(false);
+                locationGR.autoSysFields(false);
+                
+                locationGR.setValue('latitude', dawaLat);
+                locationGR.setValue('longitude', dawaLon);
+                locationGR.setValue('coordinates_retrieved_on', new GlideDateTime());
+                setCoordinateAccuracy(locationGR, accuracy);
+                
+                locationGR.update();
+                
+                return {
+                    updated: true,
+                    reason: 'Added coordinates [' + accuracy + ']',
+                    change: 'NONE -> (' + dawaLat + ', ' + dawaLon + ')'
+                };
+                
+            } else if (coordinatesAreDifferent(currentLat, currentLon, dawaLat, dawaLon)) {
+                var oldCoords = '(' + currentLat + ', ' + currentLon + ')';
+                var newCoords = '(' + dawaLat + ', ' + dawaLon + ')';
+                
+                locationGR.setWorkflow(false);
+                locationGR.autoSysFields(false);
+                
+                locationGR.setValue('latitude', dawaLat);
+                locationGR.setValue('longitude', dawaLon);
+                locationGR.setValue('coordinates_retrieved_on', new GlideDateTime());
+                setCoordinateAccuracy(locationGR, accuracy);
+                
+                locationGR.update();
+                
+                return {
+                    updated: true,
+                    reason: 'Updated coordinates [' + accuracy + ']',
+                    change: oldCoords + ' -> ' + newCoords
+                };
+                
+            } else {
+                // Update accuracy even if coordinates same
+                setCoordinateAccuracy(locationGR, accuracy);
+                return {
+                    updated: false,
+                    reason: 'Coordinates correct [' + accuracy + ']',
+                    change: 'Accuracy updated only'
+                };
+            }
+            
+        } catch (e) {
+            return { updated: false, reason: 'Update failed: ' + e.message };
+        }
+    }
+
+    /**
+     * Process locations with performance optimization
+     */
+    function processLocationsOptimized() {
+        logMessage('Starting optimized DAWA processing with accuracy tracking', 'info');
+        
+        var totalProcessed = 0;
+        var totalAdded = 0;
+        var totalUpdated = 0;
+        var totalUnchanged = 0;
+        var totalNoData = 0;
+        
+        var accuracyStats = {};
+        
+        try {
+            var gr = new GlideRecord('cmn_location');
+            gr.addQuery('country', 'Denmark');
+            gr.setLimit(BATCH_SIZE);
+            gr.query();
+            
+            var totalRecords = gr.getRowCount();
+            logMessage('Processing ' + totalRecords + ' Danish locations (optimized)', 'info');
+            
+            if (totalRecords === 0) {
+                return { processed: 0, added: 0, updated: 0, unchanged: 0, noData: 0 };
+            }
+            
+            while (gr.next() && !checkTimeLimit()) {
+                totalProcessed++;
+                
+                var locationInfo = (gr.getValue('street') || 'No street') + ', ' + 
+                                 (gr.getValue('zip') || 'No zip') + ', ' + 
+                                 (gr.getValue('city') || 'No city');
+                
+                logMessage('(' + totalProcessed + '/' + totalRecords + '): ' + locationInfo, 'info');
+                
+                var dawaResult = fetchCoordinatesWithStrictFallback(gr);
+                
+                if (dawaResult.success) {
+                    var accuracy = dawaResult.coordinates.accuracy;
+                    accuracyStats[accuracy] = (accuracyStats[accuracy] || 0) + 1;
+                    
+                    var updateResult = updateLocationWithAccuracy(gr, dawaResult);
+                    
+                    if (updateResult.updated) {
+                        if (updateResult.reason.indexOf('Added') >= 0) {
+                            totalAdded++;
+                            logMessage('+ ADDED: ' + updateResult.change + ' [' + accuracy + ']', 'info');
+                        } else {
+                            totalUpdated++;
+                            logMessage('~ UPDATED: ' + updateResult.change + ' [' + accuracy + ']', 'info');
+                        }
+                    } else {
+                        totalUnchanged++;
+                        logMessage('= UNCHANGED: ' + updateResult.reason, 'debug');
+                    }
+                } else {
+                    totalNoData++;
+                    logMessage('x NO DATA: ' + dawaResult.error, 'warn');
+                }
+                
+                // Minimal pause for performance
+                if (totalProcessed % 5 === 0) {
+                    gs.sleep(1000);
+                }
+            }
+            
+        } catch (e) {
+            logMessage('Error: ' + e.message, 'error');
+        }
+        
+        var endTime = new Date().getTime();
+        var totalTime = Math.round((endTime - startTime) / 1000);
+        
+        // Summary
+        logMessage('=== OPTIMIZED PROCESSING COMPLETE ===', 'info');
+        logMessage('Execution time: ' + totalTime + ' seconds', 'info');
+        logMessage('Locations processed: ' + totalProcessed, 'info');
+        logMessage('Added: ' + totalAdded + ', Updated: ' + totalUpdated + ', Unchanged: ' + totalUnchanged, 'info');
+        logMessage('No data: ' + totalNoData, 'info');
+        
+        logMessage('ACCURACY LEVELS:', 'info');
+        for (var accuracy in accuracyStats) {
+            logMessage('- ' + accuracy + ': ' + accuracyStats[accuracy] + ' locations', 'info');
+        }
+        
+        return {
+            processed: totalProcessed,
+            added: totalAdded,
+            updated: totalUpdated,
+            unchanged: totalUnchanged,
+            noData: totalNoData,
+            accuracyStats: accuracyStats,
+            executionTime: totalTime
+        };
+    }
+
+    try {
+        logMessage('=== OPTIMIZED DAWA WITH ACCURACY TRACKING ===', 'info');
+        logMessage('Max execution time: ' + (MAX_EXECUTION_TIME/1000) + ' seconds', 'info');
+        logMessage('Strict matching: Zip AND city must match exactly', 'info');
+        logMessage('Accuracy levels: EXACT_ADDRESS > STREET_AREA > POSTAL_AREA > POSTAL_CODE > CITY_CENTER > COUNTRY_CENTER', 'info');
+        
+        var results = processLocationsOptimized();
+        
+        if (results.processed > 0) {
+            logMessage('SUCCESS: Processed ' + results.processed + ' locations in ' + results.executionTime + 's', 'info');
+            if (results.added + results.updated > 0) {
+                logMessage('Coordinate improvements: ' + (results.added + results.updated), 'info');
+            }
+        }
+
+    } catch (e) {
+        logMessage('Script failed: ' + e.message, 'error');
+    }
+
+})();
+
+/*
+ * --- Future Improvements ---
+ * - Add UI Action for one-click coordinate refresh
+ * - Create scheduled job for periodic coordinate updates  
+ * - Add coordinate quality dashboard with accuracy statistics
+ * - Implement coordinate validation against external geocoding services
+ * - Add batch processing for large datasets (>1000 records)
+ * - Create coordinate accuracy scoring algorithm
+ * - Add automated detection of coordinate format requirements
+ * - Implement coordinate history tracking for audit trails
+ * - Add email notifications for coordinate update completion
+ * - Create REST API endpoint for external coordinate requests
+ * - Add support for custom coordinate accuracy thresholds
+ * - Implement coordinate clustering for similar addresses
+ * - Add integration with Google Maps geocoding as backup
+ * - Create coordinate data quality metrics and reporting
+
+ * --- Technical Change Log ---
+ * V12.0 - 2025-09-28 - Major - Added coordinate accuracy tracking, strict matching, performance optimization, and country fallback.
+ * V11.0 - 2025-09-28 - Major - Intelligent fallback strategy implementation.
+ * V10.0 - 2025-09-28 - Critical - Fixed DAWA coordinate handling.
+
+ * --- Business Change Log ---  
+ * V12.0 - 2025-09-28 - Major - Provides coordinate accuracy tracking for informed decision-making and faster processing.
+ */

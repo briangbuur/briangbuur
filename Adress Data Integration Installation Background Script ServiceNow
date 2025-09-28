@@ -1,286 +1,44 @@
 /***********************************************************************************************
- * SCRIPT: DAWA Integration Installation (v4.0.0 - Feature Update)
- * SCRIPT_VERSION = 'v4.0.0';
- * Purpose: Installs the complete DAWA integration suite. This version adds major features:
- * - An 'async' Business Rule to auto-normalize addresses on change.
- * - A daily status email job with a corresponding Event and Notification.
- * - All settings are centralized in a CONFIG object for easy customization.
+ * SCRIPT: DAWA Integration Installation (v3.1.0 - Robust ACL Handling)
  ***********************************************************************************************/
-(function installDAWASuite() {
-
-    // --- CENTRALIZED CONFIGURATION ---
-    const CONFIG = {
-        user: 'dawa.integration',
-        role: 'x_dawa.integrator',
-        properties: {
-            baseUrl: 'x_bgb.dawa.base_url',
-            allowList: 'x_bgb.dawa.country_allowlist',
-            autoUpdate: 'x_bgb.dawa.validate.on_update', // New property from backlog
-            emailEnable: 'x_bgb.dawa.daily_email.enabled', // New property from backlog
-            emailRecipient: 'x_bgb.dawa.daily_email.recipient' // New property from backlog
-        },
-        jobs: {
-            weeklySync: 'DAWA Data Weekly Sync',
-            consistencyCheck: 'DAWA Data Consistency Check',
-            dailyEmail: 'DAWA Daily Status Email' // New job
-        },
-        businessRule: 'DAWA - Normalize Address on Change', // New Business Rule
-        event: 'dawa.daily_status', // New Event
-        notification: 'DAWA Daily Status Report' // New Notification
-    };
-    // -------------------------------
-
-    var SCRIPT_VERSION = 'v4.0.0';
+(function() {
+    var SCRIPT_VERSION = 'v3.1.0';
     gs.info('### SETUP (' + SCRIPT_VERSION + '): Starting DAWA Integration Installation ###');
     var userSysId;
     var roleSysId;
 
-    // Step 1: Ensure System Properties
-    (function ensureProperties() {
-        gs.info('--> Step 1: Ensuring System Properties');
-        ensureProperty(CONFIG.properties.baseUrl, 'https://api.dataforsyningen.dk', 'DAWA API Base URL');
-        ensureProperty(CONFIG.properties.allowList, 'DK', 'Comma-separated list of country codes to process');
-        ensureProperty(CONFIG.properties.autoUpdate, 'true', 'Enable automatic normalization when an address is updated');
-        ensureProperty(CONFIG.properties.emailEnable, 'true', 'Enable the daily status email report');
-        ensureProperty(CONFIG.properties.emailRecipient, 'briangbuur.work@gmail.com', 'Recipient for the daily status email');
-    })();
-
-    // Step 2: Ensure Integration User
-    (function ensureUser() {
-        gs.info('--> Step 2: Ensuring Integration User');
-        var userGR = new GlideRecord('sys_user');
-        if (!userGR.get('user_name', CONFIG.user)) {
-            userGR.initialize();
-            userGR.setValue('user_name', CONFIG.user);
-            userGR.setValue('first_name', 'Integration');
-            userGR.setValue('last_name', 'DAWA API');
-            userGR.setValue('web_service_access_only', true);
-            userGR.setValue('internal_integration_user', true);
-            var tempPassword = new GlideSecureRandomUtil().getSecureRandomString(20);
-            userGR.setUserPassword(tempPassword);
-            userSysId = userGR.insert();
-        } else {
-            userSysId = userGR.getUniqueValue();
-        }
-    })();
-
-    // Step 3: Ensure Role and ACLs
-    (function ensureRoleAndACLs() {
-        gs.info('--> Step 3: Ensuring Role and ACL Links');
-        var roleGR = new GlideRecord('sys_user_role');
-        if (!roleGR.get('name', CONFIG.role)) {
-            roleGR.initialize();
-            roleGR.setValue('name', CONFIG.role);
-            roleGR.setValue('description', 'Allows DAWA integration to read/write to cmn_location');
-            roleSysId = roleGR.insert();
-        } else {
-            roleSysId = roleGR.getUniqueValue();
-        }
-        ensureAclLink('read');
-        ensureAclLink('write');
-        var rolesToAssign = [roleSysId, 'rest_service'];
-        rolesToAssign.forEach(function(roleId) {
-            var roleMapGR = new GlideRecord('sys_user_has_role');
-            if (!roleMapGR.get('user', userSysId) || !roleMapGR.get('role', roleId)) {
-                roleMapGR.initialize();
-                roleMapGR.setValue('user', userSysId);
-                roleMapGR.setValue('role', roleId);
-                roleMapGR.insert();
-            }
-        });
-    })();
-    
-    // Step 4: Ensure Custom Fields
-    (function ensureFields(){
-        gs.info('--> Step 4: Ensuring Custom Fields');
-        ensureField('cmn_location', 'u_dawa_adresse_id', 'DAWA Adresse ID', 'string', 64);
-        ensureField('cmn_location', 'u_dawa_adgangsadresse_id', 'DAWA Adgangsadresse ID', 'string', 64);
-        ensureField('cmn_location', 'u_kommune_kode', 'Kommune kode', 'string', 40);
-        ensureField('cmn_location', 'u_kommune_navn', 'Kommune navn', 'string', 100);
-    })();
-
-
-    // Step 5: Ensure Script Include
-    (function ensureScriptInclude() {
-        gs.info('--> Step 5: Ensuring Script Include');
-        var siGR = new GlideRecord('sys_script_include');
-        if (!siGR.get('name', 'DAWAAddressClient')) {
-            siGR.initialize();
-        }
-        siGR.setValue('name', 'DAWAAddressClient');
-        siGR.setValue('script', getDAWAScriptIncludeCode());
-        siGR.setValue('active', true);
-        siGR.setValue('access', 'public');
-        siGR.update();
-    })();
-
-    // Step 6: Ensure Business Rule for Auto-Update
-    (function ensureBusinessRule() {
-        gs.info('--> Step 6: Ensuring Business Rule for auto-normalization');
-        var brGR = new GlideRecord('sys_script_rule');
-        if (!brGR.get('name', CONFIG.businessRule)) {
-            brGR.initialize();
-            brGR.setValue('name', CONFIG.businessRule);
-            brGR.setValue('collection', 'cmn_location');
-            brGR.setValue('async', true);
-            brGR.setValue('when', 'after');
-            brGR.setValue('order', 100);
-        }
-        brGR.setValue('active', true);
-        brGR.setValue('condition', "current.country == 'DK' && (current.street.changes() || current.zip.changes() || current.city.changes())");
-        var script = [
-            '(function executeRule(current, previous /*null when async*/) {',
-            '    // Only run if the feature is enabled via the property',
-            '    if (gs.getProperty("' + CONFIG.properties.autoUpdate + '", "false") != "true") {',
-            '        return;',
-            '    }',
-            '    // Add a log entry for auditing',
-            '    gs.log("Auto-normalizing location " + current.getDisplayValue(), "DAWA-AutoUpdate");',
-            '    new DAWAAddressClient().normalizeRecord(current);',
-            '    // The record is updated by the normalizeRecord function if changes occur',
-            '})(current, previous);'
-        ].join('\n');
-        brGR.setValue('script', script);
-        brGR.update();
-    })();
-
-    // Step 7: Ensure UI Components
-    (function ensureUIComponents() {
-        gs.info('--> Step 7: Ensuring UI Components');
-        ensureUIAction('cmn_location', 'x_dawa_normalize', 'DAWA → Normalize', 100, "new DAWAAddressClient().normalizeRecord(current); action.setRedirectURL(current);", "current.country == 'DK'");
-        ensureUIPolicy();
-        ensureAppMenuAndModule();
-    })();
-
-
-    // Step 8: Ensure Event and Notification for Daily Email
-    (function ensureEventAndNotification() {
-        gs.info('--> Step 8: Ensuring Event and Notification for daily email');
-        // Ensure Event is registered
-        var eventGR = new GlideRecord('sysevent_register');
-        if (!eventGR.get('name', CONFIG.event)) {
-            eventGR.initialize();
-            eventGR.setValue('name', CONFIG.event);
-            eventGR.setValue('table', 'cmn_location');
-            eventGR.setValue('description', 'Fired daily by a scheduled job to send the DAWA status report.');
-            eventGR.insert();
-        }
-
-        // Ensure Email Notification exists
-        var notificationGR = new GlideRecord('sysevent_email_action');
-        if (!notificationGR.get('name', CONFIG.notification)) {
-            notificationGR.initialize();
-            notificationGR.setValue('name', CONFIG.notification);
-            notificationGR.setValue('active', true);
-            notificationGR.setValue('event_name', CONFIG.event);
-            notificationGR.setValue('send_self', false);
-        }
-        notificationGR.setValue('recipient_fields', 'parm1');
-        notificationGR.setValue('subject', 'DAWA Daily Integration Status Report');
-        var body = [
-            '<h2>DAWA Integration Summary for Today</h2>',
-            '<p>This is an automated report summarizing the DAWA address normalization activity from the past 24 hours.</p>',
-            '<hr />',
-            '<ul>',
-            '<li><strong>Records Normalized:</strong> ${event.parm2.normalized}</li>',
-            '<li><strong>Records with No Match:</strong> ${event.parm2.no_match}</li>',
-            '<li><strong>Total Processed:</strong> ${event.parm2.total}</li>',
-            '</ul>',
-            '<hr />',
-            '<p>To view locations that could not be matched, <a href="/cmn_location_list.do?sysparm_query=u_dawa_adresse_idISEMPTY%5Ecountry%3DDK">click here</a>.</p>'
-        ].join('\n');
-        notificationGR.setValue('message_html', body);
-        notificationGR.update();
-    })();
-    
-    // Step 9: Ensure Scheduled Jobs
-    (function ensureScheduledJobs() {
-        gs.info('--> Step 9: Ensuring Scheduled Jobs');
-        // Weekly Sync Job
-        ensureScheduledJob(
-            CONFIG.jobs.weeklySync,
-            'new DAWAAddressClient().syncAllDanishLocations();',
-            userSysId, {
-                run_type: 'periodically',
-                run_dayofweek: 7
-            }
-        );
-        // Consistency Check Job
-        ensureScheduledJob(
-            CONFIG.jobs.consistencyCheck,
-            'new DAWAAddressClient().runConsistencyCheck();',
-            userSysId, {
-                run_type: 'periodically',
-                run_dayofweek: 2
-            }
-        );
-        // Daily Status Email Job (NEW)
-        var emailJobScript = [
-            '(function() {',
-            '    if (gs.getProperty("' + CONFIG.properties.emailEnable + '", "false") != "true") {',
-            '        gs.log("DAWA Daily email is disabled via property.", "DAWA-DailyEmail");',
-            '        return;',
-            '    }',
-            '    var stats = new DAWAAddressClient().getStatsForLast24Hours();',
-            '    var recipient = gs.getProperty("' + CONFIG.properties.emailRecipient + '");',
-            '    if (!recipient) {',
-            '        gs.logError("DAWA Daily email recipient property is empty.", "DAWA-DailyEmail");',
-            '        return;',
-            '    }',
-            '    gs.eventQueue("' + CONFIG.event + '", null, recipient, JSON.stringify(stats));',
-            '    gs.log("DAWA Daily status email event queued for " + recipient + " with stats: " + JSON.stringify(stats), "DAWA-DailyEmail");',
-            '})();'
-        ].join('\n');
-        ensureScheduledJob(CONFIG.jobs.dailyEmail, emailJobScript, userSysId, {
-            run_type: 'daily'
-        });
-    })();
-
-    // Step 10: Trigger Initial Sync
-    (function triggerInitialSync() {
-        gs.info('--> Step 10: Triggering initial data sync');
-        var initialSyncJob = new GlideRecord('sysauto_script');
-        initialSyncJob.initialize();
-        initialSyncJob.setValue('name', 'TEMP - Initial DAWA Data Sync (' + new GlideDateTime().getDisplayValue() + ')');
-        initialSyncJob.setValue('run_type', 'on_demand');
-        initialSyncJob.setValue('run_as', userSysId);
-        initialSyncJob.setValue('script', 'new DAWAAddressClient().syncAllDanishLocations(); var self = new GlideRecord("sysauto_script"); if (self.get(GlideExecutionTracker.getGlideExecutionTracker().getSysID())) { self.deleteRecord(); }');
-        var initialJobSysId = initialSyncJob.insert();
-        if (initialJobSysId) {
-            SncTriggerSynchronizer.executeNow(initialSyncJob);
-        }
-    })();
-
-    gs.info('### SETUP (' + SCRIPT_VERSION + '): Installation script complete. ###');
-
-    /***********************************************************************************************
-     * HELPER FUNCTIONS
-     ***********************************************************************************************/
-
-    function ensureProperty(name, value, desc) {
-        var gr = new GlideRecord('sys_properties');
-        if (!gr.get('name', name)) {
-            gr.initialize();
-            gr.name = name;
-            gr.type = "string";
-        }
-        gr.value = value;
-        gr.description = desc;
-        gr.update();
+    // Trin 1: Bruger
+    var userName = 'dawa.integration';
+    var userGR = new GlideRecord('sys_user');
+    if (!userGR.get('user_name', userName)) {
+        gs.info('--> Creating user: ' + userName);
+        userGR.initialize();
+        userGR.setValue('user_name', userName);
+        userGR.setValue('first_name', 'Integration');
+        userGR.setValue('last_name', 'DAWA API');
+        userGR.setValue('web_service_access_only', true);
+        userGR.setValue('internal_integration_user', true);
+        userGR.setValue('notification', 2);
+        userGR.setValue('source', 'Integration: DAWA Address Service (Scripted)');
+        var tempPassword = new GlideSecureRandomUtil().getSecureRandomString(20);
+        userGR.setUserPassword(tempPassword);
+        userSysId = userGR.insert();
+    } else {
+        userSysId = userGR.getUniqueValue();
     }
-    
-    function ensureField(table, element, label, internalType, maxLen) {
-        var d = new GlideRecord('sys_dictionary');
-        if (!d.get('name', table) || !d.get('element', element)) {
-            d.initialize();
-            d.name = table;
-            d.element = element;
-            d.column_label = label;
-            d.internal_type = internalType;
-            if (maxLen) d.max_length = String(maxLen);
-            d.active = true;
-            d.insert();
-        }
+    gs.info('--> User setup complete.');
+
+    // Trin 2: Rolle & ACLs
+    gs.info('--> Ensuring custom role "x_dawa.integrator" and linking to ACLs.');
+    var roleName = 'x_dawa.integrator';
+    var roleGR = new GlideRecord('sys_user_role');
+    if (!roleGR.get('name', roleName)) {
+        roleGR.initialize();
+        roleGR.setValue('name', roleName);
+        roleGR.setValue('description', 'Allows read/write access to cmn_location for DAWA integration');
+        roleSysId = roleGR.insert();
+    } else {
+        roleSysId = roleGR.getUniqueValue();
     }
 
     function ensureAclLink(operation) {
@@ -288,7 +46,11 @@
         if (aclGR.get('name', 'cmn_location') && aclGR.get('operation.name', operation)) {
             var aclSysId = aclGR.getUniqueValue();
             var aclRoleGR = new GlideRecord('sys_security_acl_role');
-            if (!aclRoleGR.get('sys_security_acl', aclSysId) || !aclRoleGR.get('sys_user_role', roleSysId)) {
+            aclRoleGR.addQuery('sys_security_acl', aclSysId);
+            aclRoleGR.addQuery('sys_user_role', roleSysId);
+            aclRoleGR.query();
+            if (!aclRoleGR.next()) {
+                gs.info('---> Linking role to existing "' + operation + '" ACL for cmn_location.');
                 aclRoleGR.initialize();
                 aclRoleGR.setValue('sys_security_acl', aclSysId);
                 aclRoleGR.setValue('sys_user_role', roleSysId);
@@ -296,190 +58,77 @@
             }
         }
     }
+    ensureAclLink('read');
+    ensureAclLink('write');
+    gs.info('--> Role and ACL setup complete.');
 
-    function ensureUIAction(table, name, label, order, script, condition) {
-        var a = new GlideRecord('sys_ui_action');
-        if (!a.get('name', name)) {
-            a.initialize();
-            a.table = table;
-            a.name = name;
-            a.form_button = true;
-        }
-        a.label = label;
-        a.order = order;
-        a.client = false;
-        a.script = script;
-        a.condition = condition || '';
-        a.update();
-    }
-
-    function ensureUIPolicy() {
-        var p = new GlideRecord('sys_ui_policy');
-        if (!p.get('short_description', 'DAWA: Country mandatory')) {
-            p.initialize();
-            p.table = 'cmn_location';
-            p.short_description = 'DAWA: Country mandatory';
-            p.active = true;
-            var pId = p.insert();
-            var a = new GlideRecord('sys_ui_policy_action');
-            a.initialize();
-            a.ui_policy = pId;
-            a.field = 'country';
-            a.mandatory = 'true';
-            a.insert();
-        }
-    }
-
-    function ensureAppMenuAndModule() {
-        var app = new GlideRecord('sys_app_application');
-        if (!app.get('title', 'DAWA Integration')) {
-            app.initialize();
-            app.title = 'DAWA Integration';
-            var appId = app.insert();
-            var m = new GlideRecord('sys_app_module');
-            m.initialize();
-            m.application = appId;
-            m.title = 'Locations (DAWA)';
-            m.link_type = 'LIST';
-            m.name = 'cmn_location';
-            m.insert();
-        }
-    }
-
-    function ensureScheduledJob(name, script, runAsSysId, options) {
-        var sjGR = new GlideRecord('sysauto_script');
-        if (!sjGR.get('name', name)) {
-            sjGR.initialize();
-            sjGR.setValue('name', name);
-            sjGR.setValue('active', true);
-            sjGR.setValue('run_as', runAsSysId);
-        }
-        sjGR.setValue('script', script);
-        for (var key in options) {
-            sjGR.setValue(key, options[key]);
-        }
-        sjGR.update();
-    }
-
-    function getDAWAScriptIncludeCode() {
-        // This function now includes the new methods for stats and consistency checks
-        return `var DAWAAddressClient = Class.create();
-DAWAAddressClient.prototype = {
-    initialize: function() {
-        this.LOG_SOURCE = 'DAWAAddressClient';
-        this.base = gs.getProperty('x_bgb.dawa.base_url', 'https://api.dataforsyningen.dk');
-    },
-    normalizeRecord: function(cmn) {
-        try {
-            var q = [cmn.getValue('street'), cmn.getValue('zip'), cmn.getValue('city')].filter(Boolean).join(' ');
-            var res = this._resolveFromFreeText(q, cmn.getValue('zip'));
-            if (!res.obj) { 
-                gs.warn('DAWA no_match for: ' + q, this.LOG_SOURCE);
-                cmn.work_notes = 'DAWA lookup failed: No match found.';
-                cmn.update();
-                return { changed: false, reason: 'no_match' };
+    // Trin 3: Tildel roller
+    var rolesToAssign = ['x_dawa.integrator', 'rest_service'];
+    rolesToAssign.forEach(function(roleNameToAssign) {
+        var role = new GlideRecord('sys_user_role');
+        if (role.get('name', roleNameToAssign)) {
+            var roleMapGR = new GlideRecord('sys_user_has_role');
+            if (!roleMapGR.get('user', userSysId) || !roleMapGR.get('role', role.getUniqueValue())) {
+                roleMapGR.initialize();
+                roleMapGR.setValue('user', userSysId);
+                roleMapGR.setValue('role', role.getUniqueValue());
+                roleMapGR.insert();
             }
-            var mapped = this._mapToCmnLocation(res.obj);
-            var changed = 0;
-            for (var f in mapped) {
-                if (cmn.isValidField(f) && cmn.getValue(f) != mapped[f]) {
-                    cmn.setValue(f, mapped[f]);
-                    changed++;
-                }
-            }
-            if (changed > 0) {
-                gs.info('DAWA normalized: ' + cmn.getDisplayValue(), this.LOG_SOURCE);
-                cmn.update();
-            }
-            return { changed: changed > 0, reason: 'normalized' };
-        } catch (e) {
-            gs.error('DAWA exception during normalize: ' + e, this.LOG_SOURCE);
-            return { changed: false, reason: 'exception: ' + e };
         }
-    },
-    syncAllDanishLocations: function() {
-        gs.log('Starting syncAllDanishLocations', this.LOG_SOURCE);
-        var updated = 0;
-        var locGR = new GlideRecord('cmn_location');
-        locGR.addQuery('country', 'DK');
-        locGR.query();
-        while (locGR.next()) {
-            var res = this.normalizeRecord(locGR);
-            if (res.changed) updated++;
-        }
-        gs.log('Sync complete. Updated ' + updated + ' records.', this.LOG_SOURCE);
-    },
-    runConsistencyCheck: function() {
-        var agg = new GlideAggregate('cmn_location');
-        agg.addQuery('country', 'DK');
-        agg.addAggregate('COUNT');
-        agg.addAggregate('COUNT', 'u_dawa_adresse_id');
-        agg.query();
-        if (agg.next()) {
-            var total = agg.getAggregate('COUNT');
-            var normalized = agg.getAggregate('COUNT', 'u_dawa_adresse_id');
-            gs.info('DAWA Consistency Check: ' + normalized + ' of ' + total + ' Danish locations are normalized.', 'DAWA-Consistency');
-        }
-    },
-    getStatsForLast24Hours: function() {
-        var stats = { normalized: 0, no_match: 0, total: 0 };
-        var logGR = new GlideRecord('syslog');
-        logGR.addQuery('sys_created_on', '>=', gs.beginningOfYesterday());
-        logGR.addQuery('source', 'DAWAAddressClient');
-        logGR.addQuery('message', 'CONTAINS', 'normalized');
-        logGR.query();
-        stats.normalized = logGR.getRowCount();
-        
-        var autoUpdateLog = new GlideRecord('syslog');
-        autoUpdateLog.addQuery('sys_created_on', '>=', gs.beginningOfYesterday());
-        autoUpdateLog.addQuery('source', 'DAWA-AutoUpdate');
-        autoUpdateLog.query();
-        stats.normalized += autoUpdateLog.getRowCount();
+    });
+    gs.info('--> Role assignment complete.');
+    
+    // Trin 4 & 5: Kør resten af installationen... (forkortet for læsbarhed, fuld kode er inkluderet)
+    ensureProperty('x_bgb.dawa.base_url', 'https://api.dataforsyningen.dk', 'Base URL for DAWA (Dataforsyningen)');
+    ensureProperty('x_bgb.dawa.country_allowlist', 'DK', 'Country allowlist for normalization (comma-separated ISO codes)');
+    ensureField('cmn_location', 'u_dawa_adresse_id', 'DAWA Adresse ID', 'string', 64);
+    ensureField('cmn_location', 'u_dawa_adgangsadresse_id', 'DAWA Adgangsadresse ID', 'string', 64);
+    ensureField('cmn_location', 'u_kommune_kode', 'Kommune kode', 'string', 40);
+    ensureField('cmn_location', 'u_kommune_navn', 'Kommune navn', 'string', 100);
+    ensureUIComponents();
+    var siGR = new GlideRecord('sys_script_include');
+    if (!siGR.get('name', 'DAWAAddressClient')) { siGR.initialize(); }
+    siGR.setValue('name', 'DAWAAddressClient');
+    siGR.setValue('script', getDAWAScriptIncludeCode());
+    siGR.setValue('active', true);
+    siGR.setValue('access', 'public');
+    siGR.update();
+    var syncJobGR = new GlideRecord('sysauto_script');
+    if (!syncJobGR.get('name', 'DAWA Data Weekly Sync')) { syncJobGR.initialize(); }
+    syncJobGR.setValue('name', 'DAWA Data Weekly Sync');
+    syncJobGR.setValue('script', 'gs.info("Starting scheduled DAWA data sync."); new DAWAAddressClient().syncAllDanishLocations();');
+    syncJobGR.setValue('active', true);
+    syncJobGR.setValue('run_type', 'periodically');
+    syncJobGR.setValue('run_dayofweek', '7');
+    syncJobGR.setValue('run_time', '03:00:00');
+    syncJobGR.setValue('run_as', userSysId);
+    syncJobGR.update();
+    var monitorJobGR = new GlideRecord('sysauto_script');
+    if (!monitorJobGR.get('name', 'DAWA Data Consistency Check')) { monitorJobGR.initialize(); }
+    monitorJobGR.setValue('name', 'DAWA Data Consistency Check');
+    monitorJobGR.setValue('script', 'try{gs.info("=== DAWA Consistency Check ===");var total=0,issues=0;var locGR=new GlideRecord("cmn_location");locGR.addQuery("country","DK").addOrCondition("country","Denmark");locGR.query();while(locGR.next()){total++;if(!locGR.getValue("u_dawa_adresse_id")){issues++;}}var qualityScore=total>0?Math.round(((total-issues)/total)*100):100;gs.info("DK Locations: "+total+", Missing DAWA ID: "+issues+", Quality: "+qualityScore+"%");gs.setProperty("dawa.check.last_run",gs.nowDateTime());gs.setProperty("dawa.check.quality_score",qualityScore);}catch(e){gs.error("DAWA Consistency check error: "+e.message);}');
+    monitorJobGR.setValue('active', true);
+    monitorJobGR.setValue('run_type', 'monthly');
+    monitorJobGR.setValue('run_dayofmonth', '1');
+    monitorJobGR.setValue('run_time', '02:00:00');
+    monitorJobGR.setValue('run_as', userSysId);
+    monitorJobGR.update();
+    var initialSyncJob = new GlideRecord('sysauto_script');
+    initialSyncJob.initialize();
+    initialSyncJob.setValue('name', 'TEMP - Initial DAWA Data Sync (' + new GlideDateTime().getDisplayValue() + ')');
+    initialSyncJob.setValue('run_type', 'on_demand');
+    initialSyncJob.setValue('active', true);
+    initialSyncJob.setValue('run_as', userSysId);
+    initialSyncJob.setValue('script', 'new DAWAAddressClient().syncAllDanishLocations(); var self = new GlideRecord("sysauto_script"); if (self.get(GlideExecutionTracker.getGlideExecutionTracker().getSysID())) { self.deleteRecord(); }');
+    var initialJobSysId = initialSyncJob.insert();
+    if (initialJobSysId) { SncTriggerSynchronizer.executeNow(initialSyncJob); }
 
-        logGR.initialize();
-        logGR.addQuery('sys_created_on', '>=', gs.beginningOfYesterday());
-        logGR.addQuery('source', 'DAWAAddressClient');
-        logGR.addQuery('message', 'CONTAINS', 'no_match');
-        logGR.query();
-        stats.no_match = logGR.getRowCount();
-        stats.total = stats.normalized + stats.no_match;
-        return stats;
-    },
-    _resolveFromFreeText: function(q, zip) {
-        var url = this.base + '/adresser/autocomplete';
-        var params = { q: q, per_side: 1 };
-        if (zip) params.postnr = zip;
-        var hits = this._httpGet(url, params) || [];
-        var id = (hits.length > 0) ? hits[0].id : null;
-        var obj = null;
-        if (id) obj = this._httpGet(this.base + '/adresser/' + id, null);
-        return { obj: obj };
-    },
-    _mapToCmnLocation: function(addrObj) {
-        if (!addrObj || !addrObj.id) return null;
-        var access = addrObj.adgangsadresse || {};
-        return {
-            u_dawa_adresse_id: String(addrObj.id),
-            u_dawa_adgangsadresse_id: String(access.id || ''),
-            street: [addrObj.vejnavn, addrObj.husnr, addrObj.etage, addrObj.dør].filter(Boolean).join(' '),
-            city: (addrObj.postnummer) ? addrObj.postnummer.navn : '',
-            zip: (addrObj.postnummer) ? addrObj.postnummer.nr : '',
-            country: 'DK',
-            u_kommune_kode: (access.kommune) ? access.kommune.kode : '',
-            u_kommune_navn: (access.kommune) ? access.kommune.navn : ''
-        };
-    },
-    _httpGet: function(url, query) {
-        var rm = new sn_ws.RESTMessageV2();
-        rm.setEndpoint(url);
-        rm.setHttpMethod('GET');
-        if (query) { Object.keys(query).forEach(function(k) { rm.setQueryParameter(k, query[k]); }); }
-        var response = rm.execute();
-        if (response.getStatusCode() == 200) { return JSON.parse(response.getBody()); }
-        throw 'DAWA HTTP Error: ' + response.getStatusCode();
-    },
-    type: 'DAWAAddressClient'
-};`;
-    }
+    gs.info('### SETUP (' + SCRIPT_VERSION + '): Installation script complete. ###');
 
+    /**************** HELPER FUNCTIONS - fuld version ****************/
+    function ensureProperty(name, value, desc) { var gr = new GlideRecord('sys_properties'); if (!gr.get('name', name)) { gr.initialize(); gr.name = name; gr.type = "string"; } gr.value = value; gr.description = desc; gr.update(); }
+    function ensureField(table, element, label, internalType, maxLen) { var d = new GlideRecord('sys_dictionary'); d.addQuery('name', table); d.addQuery('element', element); d.query(); if (!d.next()) { d.initialize(); d.name = table; d.element = element; d.column_label = label; d.internal_type = internalType; if (maxLen) d.max_length = String(maxLen); d.active = true; d.insert(); } }
+    function ensureUIComponents() { var p = new GlideRecord('sys_ui_policy'); if (!p.get('short_description', 'DAWA: Country mandatory (form only)')) { p.initialize(); p.table = 'cmn_location'; p.short_description = 'DAWA: Country mandatory (form only)'; p.active = true; p.on_load = true; var pId = p.insert(); var a = new GlideRecord('sys_ui_policy_action'); a.initialize(); a.ui_policy = pId; a.field = 'country'; a.mandatory = true; a.visible = true; a.insert(); } ensureUIAction('cmn_location', 'x_dawa_normalize', 'DAWA Normalize', 10, "var res = new DAWAAddressClient().normalizeRecord(current); gs.addInfoMessage('DAWA normalize: ' + JSON.stringify(res)); if(res.changed){ current.update(); } action.setRedirectURL(current);", "current.country == 'DK' || current.country == 'Denmark'"); ensureUIAction('cmn_location', 'x_dawa_debug', 'DAWA Debug Resolve', 11, "var q = [current.street, current.zip, current.city].join(' '); var res = new DAWAAddressClient().resolveFromFreeText(q, current.zip); gs.addInfoMessage('DAWA resolve: ' + JSON.stringify(res.diag)); action.setRedirectURL(current);", "true"); var app = new GlideRecord('sys_app_application'); if (!app.get('title', 'DAWA Integration')) { app.initialize(); app.title = 'DAWA Integration'; var appId = app.insert(); var m = new GlideRecord('sys_app_module'); m.initialize(); m.application = appId; m.title = 'Locations (DAWA)'; m.link_type = 'LIST'; m.name = 'cmn_location'; m.insert(); } }
+    function ensureUIAction(table, name, label, order, script, condition) { var a = new GlideRecord('sys_ui_action'); if (!a.get('name', name)) { a.initialize(); a.table = table; a.name = name; a.form_button = true; a.client = false; } a.label = label; a.order = order; a.script = script; a.condition = condition || ''; a.update(); }
+    function getDAWAScriptIncludeCode() { return "var DAWAAddressClient = Class.create();\nDAWAAddressClient.prototype = {\n  initialize: function () {\n    this.LOG_SOURCE = 'DAWAAddressClient';\n    this.base = gs.getProperty('x_bgb.dawa.base_url', 'https://api.dataforsyningen.dk');\n    var raw = gs.getProperty('x_bgb.dawa.country_allowlist', 'DK');\n    this.allowlist = raw.split(',').map(function (s) { return (s + '').trim().toUpperCase(); });\n  },\n  _httpGet: function (url, query) {\n    var rm = new sn_ws.RESTMessageV2(); rm.setEndpoint(url); rm.setHttpMethod('GET');\n    if (query) { Object.keys(query).forEach(function(k) { rm.setQueryParameter(k, query[k]); }); }\n    var resp = rm.execute(); var code = resp.getStatusCode(); var body = resp.getBody();\n    if (code >= 200 && code < 300) { try { return JSON.parse(body); } catch (e) { return body; } }\n    throw 'DAWA HTTP ' + code + ': ' + (resp.getErrorMessage() || body || 'unknown');\n  },\n  getAddressById: function (id) { if (!id) return null; return this._httpGet(this.base + '/adresser/' + encodeURIComponent(String(id)), null); },\n  resolveFromFreeText: function (q, zip) {\n    if (!q) return { obj: null, diag: { q: q, zip: zip, ac: 0, sr: 0 } };\n    var hits = []; try { hits = this._httpGet(this.base + '/adresser/autocomplete', { q: q, per_side: 5 }) || []; } catch (e) {} \n    var id = (hits.length > 0) ? hits[0].id : null;\n    if (!id) {\n        var list = []; try { list = this._httpGet(this.base + '/adresser', { q: q, per_side: 10, postnr: zip || '' }) || []; } catch (e) {}\n        if (list.length > 0) id = list[0].id;\n    }\n    var obj = null; if (id) { try { obj = this.getAddressById(id); } catch (e) {} }\n    return { obj: obj, diag: { q: q, zip: zip, chosen: id } };\n  },\n  mapToCmnLocation: function (addrObj) {\n    if (!addrObj || !addrObj.id) return null; var access = addrObj.adgangsadresse || {};\n    var res = {\n      u_dawa_adresse_id: String(addrObj.id), u_dawa_adgangsadresse_id: String(access.id || ''),\n      street: [addrObj.vejnavn, addrObj.husnr, addrObj.etage, addrObj.dør].filter(Boolean).join(' '),\n      city: (addrObj.postnummer) ? addrObj.postnummer.navn : '', zip: (addrObj.postnummer) ? addrObj.postnummer.nr : '', country: 'DK',\n      latitude: (access.koordinater) ? access.koordinater[1] : null, longitude: (access.koordinater) ? access.koordinater[0] : null,\n      u_kommune_kode: (access.kommune) ? access.kommune.kode : '', u_kommune_navn: (access.kommune) ? access.kommune.navn : ''\n    };\n    return res;\n  },\n  normalizeRecord: function (cmn) {\n    try {\n      var country = ('' + cmn.getValue('country')).toUpperCase();\n      if (this.allowlist.indexOf(country) === -1 && country !== 'DENMARK') return { changed: false, reason: 'country_not_allowed' };\n      var q = [cmn.getValue('street'), cmn.getValue('zip'), cmn.getValue('city')].filter(Boolean).join(' ');\n      var res = this.resolveFromFreeText(q, cmn.getValue('zip'));\n      if (!res.obj) return { changed: false, reason: 'no_match', diag: res.diag };\n      var mapped = this.mapToCmnLocation(res.obj);\n      if (!mapped) return { changed: false, reason: 'map_failed', diag: res.diag };\n      var changed = 0;\n      Object.keys(mapped).forEach(function(f) {\n         var sval = (mapped[f] == null ? '' : String(mapped[f]));\n         if (cmn.isValidField(f) && cmn.getValue(f) != sval) { cmn.setValue(f, sval); changed++; }\n      });\n      return { changed: changed > 0, reason: changed > 0 ? 'normalized' : 'already_normalized', diag: res.diag };\n    } catch (e) { return { changed: false, reason: 'exception:' + e }; }\n  },\n  syncAllDanishLocations: function() {\n    gs.log('Starting syncAllDanishLocations', this.LOG_SOURCE);\n    var updated = 0, failed = 0;\n    var locGR = new GlideRecord('cmn_location');\n    locGR.addQuery('country', 'DK').addOrCondition('country', 'Denmark');\n    locGR.query();\n    while(locGR.next()) {\n      var res = this.normalizeRecord(locGR);\n      if (res.changed) {\n        locGR.setWorkflow(false); locGR.autoSysFields(false);\n        if (locGR.update()) { updated++; } else { failed++; }\n      }\n    }\n    gs.log('Sync complete. Updated: ' + updated + ', Failed: ' + failed, this.LOG_SOURCE);\n    return {updated: updated, failed: failed};\n  },\n  type: 'DAWAAddressClient'\n};"; }
 })();

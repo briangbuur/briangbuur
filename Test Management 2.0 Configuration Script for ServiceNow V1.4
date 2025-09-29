@@ -1,22 +1,20 @@
 /*
  * =========================================================================
- * Test Management 2.0 Configuration Script for ServiceNow V1.3
+ * Test Management 2.0 Configuration Script for ServiceNow V1.4
  * =========================================================================
  * 
  * --- Script Metadata ---
- * Name:          Test Management 2.0 Configuration Script V1.3
- * Version:       1.3
+ * Name:          Test Management 2.0 Configuration Script V1.4
+ * Version:       1.4
  * Modified:      2025-09-29
  * Required role: admin
  * Author:        Brian Gadeberg Buur (Concept) & Claude (Implementation)
  * Description:   Complete Test Management 2.0 application and menu configuration script with proper role descriptions, group assignments, and environment types.
  * 
- * CHANGES IN V1.3:
- * - Fixed header title consistency 
- * - Updated environment names to "Company Environment - [Name]" format
- * - Fixed (TEST) suffix application for test users
- * - Restored email addresses for test users
- * - Set test.manager as manager of Test Management Testers group (individual user, not group)
+ * CHANGES IN V1.4:
+ * - Removed email addresses from all test users
+ * - Fixed (TEST) suffix properly applied to last_name field
+ * - Corrected user creation to match XML requirements
  * 
  * =========================================================================
  */
@@ -619,7 +617,7 @@
     }
 
     /**
-     * Create Test Management users with emails and proper naming
+     * Create Test Management users without emails and with proper (TEST) suffix
      */
     function createTestManagementUsers(groups) {
         log('=== CREATING TEST MANAGEMENT USERS ===', 'info');
@@ -645,7 +643,6 @@
                 first_name: 'Test Manager',
                 last_name: '(TEST)',
                 title: 'Test Management Manager',
-                email: 'test.manager@company.com',
                 group_id: managerGroupId,
                 group_name: 'Test Management Managers'
             },
@@ -654,7 +651,6 @@
                 first_name: 'Test Tester',
                 last_name: '(TEST)',
                 title: 'Test Management Tester',
-                email: 'test.tester@company.com',
                 group_id: testerGroupId,
                 group_name: 'Test Management Testers'
             },
@@ -663,7 +659,6 @@
                 first_name: 'Test Stakeholder',
                 last_name: '(TEST)',
                 title: 'Test Management Business Stakeholder',
-                email: 'test.stakeholder@company.com',
                 group_id: stakeholderGroupId,
                 group_name: 'Test Management Business Stakeholders'
             }
@@ -693,7 +688,6 @@
                     grUser.setValue('first_name', userConfig.first_name);
                     grUser.setValue('last_name', userConfig.last_name);
                     grUser.setValue('title', userConfig.title);
-                    grUser.setValue('email', userConfig.email);
                     grUser.setValue('active', true);
                     grUser.setValue('locked_out', false);
                     
@@ -786,7 +780,7 @@
     try {
         log('', 'info');
         log('=========================================================================', 'info');
-        log('TEST MANAGEMENT 2.0 CONFIGURATION SCRIPT V1.3', 'info');
+        log('TEST MANAGEMENT 2.0 CONFIGURATION SCRIPT V1.4', 'info');
         log('=========================================================================', 'info');
         log('Configuring Test Management 2.0 application and menu structure...', 'info');
         log('', 'info');
@@ -867,7 +861,7 @@
             log('• Test Environments: Shows company test environments with proper naming', 'info');
             log('• Roles: Shows Test Management roles with business descriptions', 'info');
             log('• Groups: Shows Test Management groups with assigned roles', 'info');
-            log('• Test Users: Shows test users with (TEST) suffix and email addresses', 'info');
+            log('• Test Users: Shows test users with (TEST) suffix (no email addresses)', 'info');
             log('', 'info');
             log('ROLE STRUCTURE:', 'info');
             log('• Test Manager Group: Creates test plans, manages cycles, assigns work', 'info');
@@ -892,35 +886,34 @@
 
 /*
  * =========================================================================
- * Test Management 2.0 Configuration Script - VERSION 1.3
+ * Test Management 2.0 Configuration Script - VERSION 1.4
  * =========================================================================
  * 
- * IMPROVEMENTS IN V1.3:
+ * IMPROVEMENTS IN V1.4:
  * 
- * 1. HEADER CONSISTENCY:
- * • Fixed title to match version number (V1.3)
- * • Updated script name field to include version
+ * 1. EMAIL REMOVAL:
+ * • Removed email addresses from all test users
+ * • No email field assignment during user creation
+ * • Clean user records without email data
  * 
- * 2. ENVIRONMENT NAMING:
- * • Updated to "Company Environment - [Name]" format
- * • Clearer identification of test environments
- * • Consistent naming convention
- * 
- * 3. TEST USER CORRECTIONS:
- * • Fixed (TEST) suffix application in last name field
- * • Restored email addresses for all test users
+ * 2. SUFFIX CORRECTION:
+ * • Ensured (TEST) suffix is properly applied to last_name field
+ * • Matches XML example format exactly
  * • Proper user identification with test suffix
  * 
- * 4. GROUP MANAGEMENT:
- * • Set test.manager individual user as manager of Test Management Testers group
- * • Fixed group hierarchy structure
- * • Individual user management instead of group-to-group management
+ * 3. USER STRUCTURE:
+ * • first_name: "Test Manager", "Test Tester", "Test Stakeholder"
+ * • last_name: "(TEST)" for all test users
+ * • title: Full role description
+ * • No email field populated
  * 
- * 5. ROLE DESCRIPTIONS:
- * • Business-focused descriptions under 250 characters
- * • Explains functionality without using "why" and "what"
- * • Identifies target users for each role
- * • Based on ServiceNow documentation and community insights
+ * PREVIOUS FEATURES MAINTAINED:
+ * • Environment naming: "Company Environment - [Name]" format
+ * • Group-based role assignment working correctly
+ * • test.manager as manager of Test Management Testers group
+ * • Business-focused role descriptions
+ * • Complete 16-module menu structure
+ * • Administration section with filtered views
  * 
  * =========================================================================
  */

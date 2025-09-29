@@ -1,37 +1,35 @@
 /*
  * =========================================================================
- * Test Management Infrastructure Builder v15.0
+ * Test Management Infrastructure Builder v15.1
  * =========================================================================
  * 
  * --- Script Metadata ---
  * Name:          Test Management Infrastructure Builder
- * Version:       15.1 (Generic Infrastructure Builder with Test Environments)
+ * Version:       15.1 (Operational Data Builder - No Configuration)
  * Modified:      2025-09-29
  * Required role: admin
  * Author:        Brian Gadeberg Buur (Concept) & Claude (Implementation)
- * Description:   Generic Test Management 2.0 infrastructure builder for creating complete test structures with configurable test data.
+ * Description:   Test Management 2.0 operational data builder for creating test structures and test data.
  * 
  * PURPOSE:
- * - Create complete Test Management 2.0 infrastructure for any project/domain
+ * - Create Test Management 2.0 operational test data for any project/domain
  * - Configurable test data through DATA_CONFIG section
  * - Reusable script template for different testing scenarios
- * - Production-ready test management structure creation
+ * - Focus on test execution data rather than infrastructure configuration
  * 
  * CREATES:
  * - Test Plan with configurable state and dates
- * - Test environments (Dev, PDI, SIT, UAT, PreProd, Production)
  * - Tests with verification steps based on provided templates
  * - Test Sets with M2M relationships organized by category
  * - Test Cycle with proper hierarchy
  * - Execution Suites with correct state assignments
  * - Test Assignments linking tests to execution suites
- * - Navigation module for easy access
  * 
  * USAGE:
  * 1. Configure DATA_CONFIG section with your test data
  * 2. Set project name, description, and test categories
  * 3. Define step templates for your test scenarios
- * 4. Run script to create complete infrastructure
+ * 4. Run script to create complete test data structure
  * 
  * =========================================================================
  */
@@ -49,7 +47,7 @@
         // Project Configuration
         project: {
             name: 'DAWA Coordinate Accuracy',
-            version: 'v15.0',
+            version: 'v15.1',
             description: 'Danish Address Web API coordinate accuracy validation testing infrastructure',
             domain: 'Location Services'
         },
@@ -284,46 +282,12 @@
                         '{PROJECT_NAME} {VERSION}-006: Accuracy-Based Map Zoom Validation',
                         '{PROJECT_NAME} {VERSION}-007: DAWA API Connectivity Testing']
             }
-        },
-
-        // Test Environments - Common deployment environments
-        testEnvironments: [
-            {
-                name: 'Development (Dev)',
-                short_description: 'Development environment for initial testing and feature development',
-                type: 'development'
-            },
-            {
-                name: 'Personal Developer Instance (PDI)',
-                short_description: 'Personal Developer Instance for individual testing and development',
-                type: 'development'
-            },
-            {
-                name: 'System Integration Testing (SIT)',
-                short_description: 'System Integration Testing environment for component integration validation',
-                type: 'integration'
-            },
-            {
-                name: 'User Acceptance Testing (UAT)',
-                short_description: 'User Acceptance Testing environment for business user validation',
-                type: 'acceptance'
-            },
-            {
-                name: 'Pre-Production (PreProd)',
-                short_description: 'Pre-Production environment for final validation before production release',
-                type: 'staging'
-            },
-            {
-                name: 'Production (Prod)',
-                short_description: 'Production environment for live system testing and validation',
-                type: 'production'
-            }
-        ]
+        }
     };
     
     /**
      * =========================================================================
-     * INFRASTRUCTURE BUILDER ENGINE
+     * OPERATIONAL DATA BUILDER ENGINE
      * =========================================================================
      * Generic engine - should not need modification for different projects
      */
@@ -415,43 +379,6 @@
         }
         
         return null;
-    }
-
-    /**
-     * Create test environments
-     */
-    function createTestEnvironments() {
-        log('=== CREATING TEST ENVIRONMENTS ===', 'info');
-        
-        var environmentsCreated = [];
-        
-        for (var i = 0; i < DATA_CONFIG.testEnvironments.length; i++) {
-            var envDef = DATA_CONFIG.testEnvironments[i];
-            
-            try {
-                var grTestEnv = new GlideRecord('sn_test_management_test_environment');
-                grTestEnv.initialize();
-                grTestEnv.setValue('name', envDef.name);
-                grTestEnv.setValue('short_description', envDef.short_description);
-                grTestEnv.setValue('type', envDef.type);
-                // Note: Not setting URL field as requested
-                
-                var testEnvId = grTestEnv.insert();
-                
-                if (testEnvId) {
-                    environmentsCreated.push({
-                        id: testEnvId,
-                        name: envDef.name,
-                        type: envDef.type
-                    });
-                    log('✓ Created test environment: ' + envDef.name + ' (' + envDef.type + ')', 'info');
-                }
-            } catch (e) {
-                log('Error creating test environment: ' + e.message, 'error');
-            }
-        }
-        
-        return environmentsCreated;
     }
 
     /**
@@ -688,60 +615,17 @@
     }
 
     /**
-     * Create navigation module
-     */
-    function createMenuModule(testPlanId) {
-        log('=== CREATING MENU MODULE ===', 'info');
-        
-        try {
-            var grTestMgmtApp = new GlideRecord('sys_app_application');
-            grTestMgmtApp.addQuery('title', 'Test Management 2.0');
-            grTestMgmtApp.query();
-            
-            if (grTestMgmtApp.next()) {
-                var testMgmtAppId = grTestMgmtApp.getUniqueValue();
-                
-                var grModule = new GlideRecord('sys_app_module');
-                grModule.initialize();
-                grModule.setValue('application', testMgmtAppId);
-                grModule.setValue('title', DATA_CONFIG.project.name);
-                grModule.setValue('hint', DATA_CONFIG.project.name + ' Test Infrastructure');
-                grModule.setValue('order', '290');
-                grModule.setValue('active', true);
-                grModule.setValue('link_type', 'DIRECT');
-                
-                var moduleUrl = 'sn_test_management_test_cycle_list.do?sysparm_query=parent%3D' + testPlanId;
-                grModule.setValue('name', moduleUrl);
-                
-                var moduleId = grModule.insert();
-                
-                if (moduleId) {
-                    log('✓ Created menu module', 'info');
-                    return true;
-                }
-            }
-        } catch (e) {
-            log('Error creating menu module: ' + e.message, 'error');
-        }
-        
-        return false;
-    }
-
-    /**
      * Main execution
      */
     try {
         log('', 'info');
         log('=========================================================================', 'info');
-        log('TEST MANAGEMENT INFRASTRUCTURE BUILDER v15.0', 'info');
+        log('TEST MANAGEMENT INFRASTRUCTURE BUILDER v15.1', 'info');
         log('=========================================================================', 'info');
-        log('Building test infrastructure for: ' + DATA_CONFIG.project.name, 'info');
+        log('Building test data for: ' + DATA_CONFIG.project.name, 'info');
         log('Domain: ' + DATA_CONFIG.project.domain, 'info');
         log('Description: ' + DATA_CONFIG.project.description, 'info');
         log('', 'info');
-        
-        // Create test environments first
-        var testEnvironments = createTestEnvironments();
         
         var testPlan = createTestPlan();
         if (!testPlan) {
@@ -758,11 +642,9 @@
             executionSuites = createExecutionSuitesWithAssignments(testPlan, testCycleId, testSetsCreated, testsCreated);
         }
         
-        createMenuModule(testPlan.id);
-        
         log('', 'info');
         log('=========================================================================', 'info');
-        log('INFRASTRUCTURE CREATION COMPLETE', 'info');
+        log('TEST DATA CREATION COMPLETE', 'info');
         log('=========================================================================', 'info');
         log('', 'info');
         
@@ -771,19 +653,17 @@
             totalAssignments += executionSuites[i].assignments;
         }
         
-        log('CREATED COMPONENTS:', 'info');
-        log('• ' + testEnvironments.length + ' Test Environments (Dev, PDI, SIT, UAT, PreProd, Production)', 'info');
+        log('CREATED TEST DATA:', 'info');
         log('• 1 Test Plan: ' + DATA_CONFIG.project.name + ' Test Plan', 'info');
         log('• ' + Object.keys(testsCreated).length + ' Tests with verification steps', 'info');
         log('• ' + Object.keys(testSetsCreated).length + ' Test Sets with M2M relationships', 'info');
         log('• 1 Test Cycle: ' + DATA_CONFIG.project.name + ' Test Cycle', 'info');
         log('• ' + executionSuites.length + ' Execution Suites', 'info');
         log('• ' + totalAssignments + ' Test Assignments', 'info');
-        log('• Navigation module: ' + DATA_CONFIG.project.name, 'info');
         log('', 'info');
         
-        log('SUCCESS! Test infrastructure ready for: ' + DATA_CONFIG.project.name, 'info');
-        log('Navigate to: Test Management 2.0 > ' + DATA_CONFIG.project.name, 'info');
+        log('SUCCESS! Test data ready for: ' + DATA_CONFIG.project.name, 'info');
+        log('Navigate to: Test Management 2.0 > Test Plans', 'info');
         log('', 'info');
         log('=========================================================================', 'info');
 
@@ -796,18 +676,26 @@
 
 /*
  * =========================================================================
- * Test Management Infrastructure Builder v15.0 
+ * Test Management Infrastructure Builder v15.1 
  * =========================================================================
  * 
- * REUSABLE FRAMEWORK:
+ * OPERATIONAL DATA FRAMEWORK:
  * 
- * To create test infrastructure for other projects:
+ * To create test data for other projects:
  * 1. Modify DATA_CONFIG.project section with your project details
  * 2. Update DATA_CONFIG.stepTemplates with your test scenarios  
  * 3. Adjust DATA_CONFIG.testDefinitions and testSetMappings as needed
- * 4. Run script to generate complete test infrastructure
+ * 4. Run script to generate operational test data
  * 
- * Current configuration creates: DAWA Coordinate Accuracy test infrastructure
+ * REMOVED CONFIGURATION SECTIONS:
+ * - Application menu creation
+ * - Test environment creation
+ * - Menu module creation
+ * - Other infrastructure configuration elements
+ * 
+ * FOCUS: Creates operational test data structures for execution
+ * 
+ * Current configuration creates: DAWA Coordinate Accuracy test data
  * 
  * =========================================================================
  */

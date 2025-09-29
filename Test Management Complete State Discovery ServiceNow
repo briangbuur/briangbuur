@@ -1,0 +1,303 @@
+/*
+ * --- Script Metadata ---
+ * Name:          Test Management Complete State Discovery (v.2.0)
+ * Version:       2.0
+ * Modified:      2025-01-27
+ * Required role: admin
+ * Author:        Brian Gadeberg Buur (Concept) & Claude (Implementation)
+ * Description:   Comprehensive discovery script to identify all state fields across ALL Test Management 2.0 tables, their values, labels, and usage.
+ * Compatibility: Xanadu (Q3 2024), Yokohama (Q1 2025), Zurich (Q3/Q4 2025)
+ * Dependencies:  Test Management 2.0 application (sn_test_management)
+ * Performance:   Medium execution time due to multiple table scans
+ * Security:      No data modifications, only reads configuration and counts records
+ */
+
+(function() {
+    'use strict';
+
+    /**
+     * Helper function to log messages in a structured format.
+     * @param {string} message - The message to log.
+     * @param {string} level - The log level (e.g., 'info', 'warn', 'error').
+     */
+    function logMessage(message, level) {
+        var timestamp = new GlideDateTime().getDisplayValue();
+        gs.info('[TM_STATE_DISCOVERY] ' + timestamp + ' - ' + level.toUpperCase() + ': ' + message);
+    }
+
+    /**
+     * Discovers state configuration for a specific table
+     * @param {string} tableName - The table to analyze
+     * @param {string} tableLabel - Display name for the table
+     */
+    function discoverTableStates(tableName, tableLabel) {
+        logMessage('\n========================================', 'info');
+        logMessage('ANALYZING TABLE: ' + tableLabel + ' (' + tableName + ')', 'info');
+        logMessage('========================================', 'info');
+        
+        // First, check if the table exists
+        if (!gs.tableExists(tableName)) {
+            logMessage('Table does not exist in this instance!', 'warn');
+            return;
+        }
+        
+        // Check if table has a state field
+        var grDict = new GlideRecord('sys_dictionary');
+        grDict.addQuery('name', tableName);
+        grDict.addQuery('element', 'state');
+        grDict.query();
+        
+        if (!grDict.next()) {
+            logMessage('No state field found on this table', 'info');
+            return;
+        }
+        
+        // Dictionary Configuration
+        logMessage('\n--- Dictionary Configuration ---', 'info');
+        logMessage('Field Type: ' + grDict.getValue('internal_type'), 'info');
+        logMessage('Choice List ID: ' + grDict.getValue('choice'), 'info');
+        logMessage('Default Value: ' + (grDict.getValue('default_value') || '(none)'), 'info');
+        logMessage('Mandatory: ' + grDict.getValue('mandatory'), 'info');
+        logMessage('Read Only: ' + grDict.getValue('read_only'), 'info');
+        
+        // Choice List Values
+        logMessage('\n--- Choice List Values ---', 'info');
+        var grChoice = new GlideRecord('sys_choice');
+        grChoice.addQuery('name', tableName);
+        grChoice.addQuery('element', 'state');
+        grChoice.orderBy('sequence');
+        grChoice.query();
+        
+        var stateMap = {};
+        var stateCount = 0;
+        
+        logMessage('Format: [Seq] Value -> Label (Inactive: Y/N)', 'info');
+        while (grChoice.next()) {
+            stateCount++;
+            var value = grChoice.getValue('value');
+            var label = grChoice.getValue('label');
+            var sequence = grChoice.getValue('sequence');
+            var inactive = grChoice.getValue('inactive');
+            
+            stateMap[value] = label;
+            logMessage('[' + sequence + '] "' + value + '" -> "' + label + '" (Inactive: ' + (inactive === 'true' ? 'Y' : 'N') + ')', 'info');
+        }
+        
+        if (stateCount === 0) {
+            logMessage('No choice values found for state field!', 'warn');
+        }
+        
+        // Current Usage
+        logMessage('\n--- Current Usage Statistics ---', 'info');
+        try {
+            var grTable = new GlideRecord(tableName);
+            grTable.addAggregate('COUNT');
+            grTable.groupBy('state');
+            grTable.query();
+            
+            var totalRecords = 0;
+            var usageFound = false;
+            
+            while (grTable.next()) {
+                usageFound = true;
+                var stateValue = grTable.getValue('state');
+                var count = grTable.getAggregate('COUNT');
+                var stateLabel = stateMap[stateValue] || '(Unknown Label)';
+                
+                totalRecords += parseInt(count);
+                logMessage('State: "' + stateValue + '" (' + stateLabel + ') - Count: ' + count, 'info');
+            }
+            
+            if (!usageFound) {
+                logMessage('No records found in table', 'info');
+            } else {
+                logMessage('Total Records: ' + totalRecords, 'info');
+            }
+            
+        } catch (e) {
+            logMessage('Error querying table: ' + e.message, 'error');
+        }
+        
+        // Sample Records
+        logMessage('\n--- Sample Records (First 3) ---', 'info');
+        try {
+            var grSample = new GlideRecord(tableName);
+            grSample.setLimit(3);
+            grSample.orderByDesc('sys_created_on');
+            grSample.query();
+            
+            var sampleCount = 0;
+            while (grSample.next()) {
+                sampleCount++;
+                var stateValue = grSample.getValue('state');
+                var stateDisplay = grSample.getDisplayValue('state');
+                var recordName = grSample.getValue('short_description') || grSample.getValue('name') || grSample.getValue('number') || grSample.getDisplayValue();
+                
+                logMessage('Record: "' + recordName + '"', 'info');
+                logMessage('  State Value: "' + stateValue + '", Display: "' + stateDisplay + '"', 'info');
+                logMessage('  Created: ' + grSample.getValue('sys_created_on'), 'info');
+            }
+            
+            if (sampleCount === 0) {
+                logMessage('No sample records to display', 'info');
+            }
+            
+        } catch (e) {
+            logMessage('Error sampling records: ' + e.message, 'error');
+        }
+    }
+
+    try {
+        logMessage('Starting Complete Test Management State Discovery', 'info');
+        
+        // Check if Test Management 2.0 is installed
+        var grApp = new GlideRecord('sys_scope');
+        grApp.addQuery('scope', 'sn_test_management');
+        grApp.query();
+        
+        if (!grApp.next()) {
+            logMessage('Test Management 2.0 application not found. Is it installed?', 'error');
+            return;
+        }
+        
+        logMessage('Test Management 2.0 found: ' + grApp.getValue('name') + ' (version: ' + grApp.getValue('version') + ')', 'info');
+        
+        // Define all Test Management tables to check
+        var tablesToCheck = [
+            {name: 'sn_test_management_test_plan', label: 'Test Plans'},
+            {name: 'sn_test_management_test', label: 'Tests'},
+            {name: 'sn_test_management_test_version', label: 'Test Versions'},
+            {name: 'sn_test_management_test_set', label: 'Test Sets'},
+            {name: 'sn_test_management_test_cycle', label: 'Test Cycles'},
+            {name: 'sn_test_management_test_instance', label: 'Test Instances'},
+            {name: 'sn_test_management_step', label: 'Test Steps'},
+            {name: 'sn_test_management_step_instance', label: 'Step Instances'},
+            {name: 'sn_test_management_test_suite', label: 'Test Suites'},
+            {name: 'sn_test_management_test_execution', label: 'Test Executions'},
+            {name: 'sn_test_management_defect', label: 'Defects'},
+            {name: 'sn_test_management_test_requirement', label: 'Test Requirements'},
+            {name: 'sn_test_management_test_case', label: 'Test Cases'},
+            {name: 'sn_test_management_test_result', label: 'Test Results'}
+        ];
+        
+        // Discover all tables starting with sn_test_management
+        logMessage('\n=== DISCOVERING ALL TEST MANAGEMENT TABLES ===', 'info');
+        var grAllTables = new GlideRecord('sys_db_object');
+        grAllTables.addQuery('name', 'STARTSWITH', 'sn_test_management');
+        grAllTables.orderBy('name');
+        grAllTables.query();
+        
+        var discoveredTables = [];
+        while (grAllTables.next()) {
+            var tableName = grAllTables.getValue('name');
+            var tableLabel = grAllTables.getValue('label');
+            discoveredTables.push({name: tableName, label: tableLabel});
+        }
+        
+        logMessage('Found ' + discoveredTables.length + ' Test Management tables', 'info');
+        
+        // Analyze each discovered table
+        for (var i = 0; i < discoveredTables.length; i++) {
+            var table = discoveredTables[i];
+            discoverTableStates(table.name, table.label);
+        }
+        
+        // Summary of state fields across all tables
+        logMessage('\n========================================', 'info');
+        logMessage('CROSS-TABLE STATE ANALYSIS', 'info');
+        logMessage('========================================', 'info');
+        
+        // Find unique state values across all tables
+        var grAllStates = new GlideRecord('sys_choice');
+        grAllStates.addQuery('name', 'STARTSWITH', 'sn_test_management');
+        grAllStates.addQuery('element', 'state');
+        grAllStates.groupBy('value');
+        grAllStates.groupBy('label');
+        grAllStates.query();
+        
+        var uniqueStates = {};
+        while (grAllStates.next()) {
+            var value = grAllStates.getValue('value');
+            var label = grAllStates.getValue('label');
+            
+            if (!uniqueStates[value]) {
+                uniqueStates[value] = {
+                    label: label,
+                    tables: []
+                };
+            }
+        }
+        
+        // Now find which tables use which states
+        for (var stateValue in uniqueStates) {
+            var grTableUsage = new GlideRecord('sys_choice');
+            grTableUsage.addQuery('name', 'STARTSWITH', 'sn_test_management');
+            grTableUsage.addQuery('element', 'state');
+            grTableUsage.addQuery('value', stateValue);
+            grTableUsage.query();
+            
+            while (grTableUsage.next()) {
+                uniqueStates[stateValue].tables.push(grTableUsage.getValue('name'));
+            }
+        }
+        
+        logMessage('\n--- Unique State Values Across All Tables ---', 'info');
+        for (var stateVal in uniqueStates) {
+            var stateInfo = uniqueStates[stateVal];
+            logMessage('Value: "' + stateVal + '" (' + stateInfo.label + ')', 'info');
+            logMessage('  Used in: ' + stateInfo.tables.join(', '), 'info');
+        }
+        
+        // Check for state-related business rules across all tables
+        logMessage('\n--- State-Related Business Rules Summary ---', 'info');
+        var grBR = new GlideRecord('sys_script');
+        grBR.addQuery('collection', 'STARTSWITH', 'sn_test_management');
+        grBR.addQuery('active', true);
+        grBR.addQuery('script', 'CONTAINS', 'state');
+        grBR.query();
+        
+        var brByTable = {};
+        while (grBR.next()) {
+            var collection = grBR.getValue('collection');
+            if (!brByTable[collection]) {
+                brByTable[collection] = [];
+            }
+            brByTable[collection].push(grBR.getValue('name'));
+        }
+        
+        for (var tableName in brByTable) {
+            logMessage('Table: ' + tableName + ' has ' + brByTable[tableName].length + ' state-related business rules', 'info');
+        }
+        
+        logMessage('\n=== DISCOVERY COMPLETE ===', 'info');
+        logMessage('Review the findings above to understand Test Management state configurations', 'info');
+        
+    } catch (e) {
+        logMessage('An error occurred during discovery: ' + e.message, 'error');
+        logMessage('Stack trace: ' + e.stack, 'error');
+    }
+
+})();
+
+/*
+ * --- Future Improvements ---
+ * - Add discovery of state transitions and state models for each table
+ * - Create visualization of state relationships between tables
+ * - Check for UI policies and client scripts that depend on states
+ * - Analyze workflow dependencies on state values
+ * - Export findings to a structured format (JSON/CSV)
+ * - Add performance metrics for large table scans
+
+ * --- Maintenance Notes ---
+ * - This is a read-only discovery script
+ * - May take longer to run in instances with large test data
+ * - Handles tables that may not exist in all versions
+
+ * --- Technical Change Log ---
+ * V2.0 - 2025-01-27 - 11:00 - Major - Expanded to cover all Test Management tables with comprehensive state analysis
+ * V1.0 - 2025-01-27 - 10:00 - Major - Initial creation for test plan states only
+
+ * --- Business Change Log ---
+ * V2.0 - 2025-01-27 - 11:00 - Major - Enhanced to discover state configurations across entire Test Management application
+ * V1.0 - 2025-01-27 - 10:00 - Major - Created tool to discover test plan state configuration
+ */

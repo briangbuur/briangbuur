@@ -1,0 +1,813 @@
+/*
+ * =========================================================================
+ * Test Management Infrastructure Builder v15.0
+ * =========================================================================
+ * 
+ * --- Script Metadata ---
+ * Name:          Test Management Infrastructure Builder
+ * Version:       15.1 (Generic Infrastructure Builder with Test Environments)
+ * Modified:      2025-09-29
+ * Required role: admin
+ * Author:        Brian Gadeberg Buur (Concept) & Claude (Implementation)
+ * Description:   Generic Test Management 2.0 infrastructure builder for creating complete test structures with configurable test data.
+ * 
+ * PURPOSE:
+ * - Create complete Test Management 2.0 infrastructure for any project/domain
+ * - Configurable test data through DATA_CONFIG section
+ * - Reusable script template for different testing scenarios
+ * - Production-ready test management structure creation
+ * 
+ * CREATES:
+ * - Test Plan with configurable state and dates
+ * - Test environments (Dev, PDI, SIT, UAT, PreProd, Production)
+ * - Tests with verification steps based on provided templates
+ * - Test Sets with M2M relationships organized by category
+ * - Test Cycle with proper hierarchy
+ * - Execution Suites with correct state assignments
+ * - Test Assignments linking tests to execution suites
+ * - Navigation module for easy access
+ * 
+ * USAGE:
+ * 1. Configure DATA_CONFIG section with your test data
+ * 2. Set project name, description, and test categories
+ * 3. Define step templates for your test scenarios
+ * 4. Run script to create complete infrastructure
+ * 
+ * =========================================================================
+ */
+
+(function() {
+    'use strict';
+
+    /**
+     * =========================================================================
+     * DATA CONFIGURATION SECTION
+     * =========================================================================
+     * Modify this section to customize for different projects/domains
+     */
+    var DATA_CONFIG = {
+        // Project Configuration
+        project: {
+            name: 'DAWA Coordinate Accuracy',
+            version: 'v15.0',
+            description: 'Danish Address Web API coordinate accuracy validation testing infrastructure',
+            domain: 'Location Services'
+        },
+        
+        // Test Infrastructure Settings
+        infrastructure: {
+            planDaysFromNow: 1,
+            planDuration: 60,
+            cycleDaysFromNow: 2,
+            cycleDuration: 30,
+            // Actual state values from Test Management 2.0
+            states: {
+                testPlan: '2',        // "Work in Progress" 
+                testCycle: '2',       // "Work in Progress"
+                executionSuite: '2',  // "Current" 
+                testVersionDraft: 'draft',
+                testVersionReady: 'ready'
+            }
+        },
+
+        // Step Templates - Define your test scenarios here
+        stepTemplates: {
+            'Coordinate Accuracy Field': [
+                {
+                    content: 'STEP 1 - Database Schema Validation: Navigate to System Definition > Tables, search for "cmn_location", and verify that the u_coord_accuracy field exists with proper data type (choice) and length specifications matching Danish standards requirements.',
+                    isVerification: false
+                },
+                {
+                    content: 'STEP 2 - Choice List Verification: Access the u_coord_accuracy field dictionary and verify the choice list contains all Danish accuracy standards: A (highest accuracy), B (high accuracy), C (medium accuracy), D (low accuracy), E (estimated), F (manual), G (geocoded), and U (unknown/undefined).',
+                    isVerification: false
+                },
+                {
+                    content: 'STEP 3 - Default Value Testing: Create a new location record and verify the u_coord_accuracy field has appropriate default value behavior, ensuring it does not auto-populate with incorrect values and allows manual selection.',
+                    isVerification: false
+                },
+                {
+                    content: 'STEP 4 - Field Behavior Validation: Test field behavior across different user roles, verify read/write permissions are correctly configured, and ensure the field integrates properly with location validation business rules.',
+                    isVerification: false
+                },
+                {
+                    content: 'VERIFICATION STEP 5 - Integration Verification: Confirm the u_coord_accuracy field properly integrates with DAWA API responses. EXPECTED RESULT: Field correctly stores and displays accuracy values A-G and U.',
+                    isVerification: true
+                }
+            ],
+            'Location Source Field': [
+                {
+                    content: 'STEP 1 - Database Structure Analysis: Navigate to System Definition > Tables > cmn_location and examine the u_location_source field configuration, verifying data type, length, and table relationships are properly defined for DAWA integration.',
+                    isVerification: false
+                },
+                {
+                    content: 'STEP 2 - Choice Configuration Testing: Review the u_location_source choice list to ensure it includes all relevant location source options: Manual Entry, DAWA API, Geocoding Service, Import, and User Input, with proper values and labels.',
+                    isVerification: false
+                },
+                {
+                    content: 'STEP 3 - Default Behavior Verification: Test field default value assignment during various location creation scenarios including manual entry, API integration, and batch imports to ensure appropriate source tracking.',
+                    isVerification: false
+                },
+                {
+                    content: 'STEP 4 - Integration Workflow Testing: Create test locations through different methods (manual, API, import) and verify the u_location_source field automatically populates with the correct source identifier for audit trail purposes.',
+                    isVerification: false
+                },
+                {
+                    content: 'VERIFICATION STEP 5 - Business Rule Integration: Validate that the u_location_source field properly triggers location validation business rules. EXPECTED RESULT: Field correctly captures all source types and maintains audit trail.',
+                    isVerification: true
+                }
+            ],
+            'Location Form': [
+                {
+                    content: 'STEP 1 - Form Layout Verification: Navigate to Location module > All Locations, open various location records and verify that u_coord_accuracy and u_location_source fields are visible, properly positioned, and formatted according to UI standards.',
+                    isVerification: false
+                },
+                {
+                    content: 'STEP 2 - Field Editability Testing: Test field editing capabilities across different user roles (admin, location_admin, read-only users) to ensure appropriate permissions are enforced and fields behave correctly during edit operations.',
+                    isVerification: false
+                },
+                {
+                    content: 'STEP 3 - Cross-Platform Compatibility: Test field visibility and functionality across different interfaces including classic UI, Service Portal, mobile interface, and any custom location forms to ensure consistent behavior.',
+                    isVerification: false
+                },
+                {
+                    content: 'STEP 4 - Form Validation Testing: Test form validation behavior when DAWA fields are modified, ensuring proper validation messages, required field enforcement, and data integrity checks function correctly across all form contexts.',
+                    isVerification: false
+                },
+                {
+                    content: 'VERIFICATION STEP 5 - User Experience Validation: Conduct comprehensive user experience testing. EXPECTED RESULT: All DAWA fields are visible and provide good user experience.',
+                    isVerification: true
+                }
+            ],
+            'Manual Coordinate Entry': [
+                {
+                    content: 'STEP 1 - Workflow Initiation Testing: Access a location record and initiate the manual coordinate entry process, verifying the workflow launches correctly and presents appropriate input fields for latitude and longitude coordinates.',
+                    isVerification: false
+                },
+                {
+                    content: 'STEP 2 - Coordinate Format Validation: Test coordinate input validation using various formats including decimal degrees (55.6761, 12.5683), degrees/minutes/seconds, and invalid formats to ensure proper validation and error handling.',
+                    isVerification: false
+                },
+                {
+                    content: 'STEP 3 - Accuracy Level Assignment: During coordinate entry, test the accuracy level selection process, verify that choosing an accuracy level properly populates the u_coord_accuracy field, and ensure the selection aligns with coordinate precision.',
+                    isVerification: false
+                },
+                {
+                    content: 'STEP 4 - Data Persistence Verification: Complete the manual coordinate entry workflow and verify that all data (coordinates, accuracy level, location source) persists correctly in the database and displays accurately in the location record.',
+                    isVerification: false
+                },
+                {
+                    content: 'VERIFICATION STEP 5 - Workflow Integration Testing: Test complete workflow end-to-end. EXPECTED RESULT: Manual coordinate entry workflow completes successfully with all data persisting correctly.',
+                    isVerification: true
+                }
+            ],
+            'Google Maps Integration': [
+                {
+                    content: 'STEP 1 - UI Action Verification: Open a location record with populated coordinates and verify the Google Maps UI action button is present, properly labeled, and accessible to appropriate user roles without permission errors.',
+                    isVerification: false
+                },
+                {
+                    content: 'STEP 2 - Map Display Testing: Click the Google Maps UI action and verify the map opens correctly, displays the location at the proper coordinates, and shows appropriate zoom level based on coordinate accuracy level.',
+                    isVerification: false
+                },
+                {
+                    content: 'STEP 3 - Location Accuracy Visualization: Test map display with locations having different accuracy levels (A, B, C, D) and verify that higher accuracy locations display with greater precision and appropriate zoom levels.',
+                    isVerification: false
+                },
+                {
+                    content: 'STEP 4 - Map Interaction Validation: Test map interaction features including zoom controls, pan functionality, marker behavior, and any additional mapping tools to ensure full functionality and user experience quality.',
+                    isVerification: false
+                },
+                {
+                    content: 'VERIFICATION STEP 5 - Coordinate Precision Testing: Validate map coordinate precision. EXPECTED RESULT: Google Maps correctly displays location with appropriate zoom level.',
+                    isVerification: true
+                }
+            ],
+            'Accuracy-Based Map Zoom': [
+                {
+                    content: 'STEP 1 - Test Data Preparation: Create multiple test location records with different coordinate accuracy levels (A=highest, B=high, C=medium, D=low) and verify each record has properly configured coordinates and accuracy assignments.',
+                    isVerification: false
+                },
+                {
+                    content: 'STEP 2 - Zoom Level Correlation Testing: Open Google Maps for each test location and verify that zoom levels correlate appropriately with accuracy: A-level should show highest zoom, B-level medium-high zoom, C-level medium zoom, D-level lower zoom.',
+                    isVerification: false
+                },
+                {
+                    content: 'STEP 3 - Zoom Consistency Validation: Test multiple locations with the same accuracy level and verify consistent zoom behavior across different locations, ensuring the zoom calculation algorithm works reliably.',
+                    isVerification: false
+                },
+                {
+                    content: 'STEP 4 - Edge Case Testing: Test zoom behavior with undefined accuracy (U), extreme coordinates, and boundary conditions to ensure robust handling of all accuracy scenarios and geographic edge cases.',
+                    isVerification: false
+                },
+                {
+                    content: 'VERIFICATION STEP 5 - Performance and Standards Compliance: Validate zoom calculations meet Danish standards. EXPECTED RESULT: Zoom levels correctly correlate with accuracy levels.',
+                    isVerification: true
+                }
+            ],
+            'DAWA API Connectivity': [
+                {
+                    content: 'STEP 1 - API Endpoint Connectivity: Test connection to all DAWA API endpoints including address search, coordinate lookup, and validation services. Verify network connectivity, SSL/TLS security, and response times meet performance requirements.',
+                    isVerification: false
+                },
+                {
+                    content: 'STEP 2 - Authentication and Authorization: Validate API authentication mechanisms, test with valid and invalid credentials if applicable, and verify proper handling of authentication errors and token management processes.',
+                    isVerification: false
+                },
+                {
+                    content: 'STEP 3 - Response Format Validation: Test API responses for proper JSON structure, required fields, data types, and Danish character encoding. Verify response parsing and handling of various response scenarios including empty results.',
+                    isVerification: false
+                },
+                {
+                    content: 'STEP 4 - Error Handling Verification: Test API error conditions including network failures, invalid requests, rate limiting, and service unavailability. Verify appropriate error messages, logging, and fallback behavior.',
+                    isVerification: false
+                },
+                {
+                    content: 'VERIFICATION STEP 5 - Performance Testing: Conduct performance testing. EXPECTED RESULT: All DAWA API endpoints accessible with response times under 2 seconds.',
+                    isVerification: true
+                }
+            ],
+            'Address Normalization': [
+                {
+                    content: 'STEP 1 - Input Address Preparation: Prepare comprehensive test dataset including valid Danish addresses, partial addresses, ambiguous addresses, and invalid address formats for thorough testing coverage.',
+                    isVerification: false
+                },
+                {
+                    content: 'STEP 2 - Normalization Process Initiation: Trigger the DAWA address validation process through various methods (manual entry, bulk import, API call) and verify the normalization workflow initiates correctly with proper input handling.',
+                    isVerification: false
+                },
+                {
+                    content: 'STEP 3 - API Integration and Response Processing: Monitor the DAWA API integration during normalization, verify proper API calls are made, responses are correctly processed, and coordinate data is accurately extracted.',
+                    isVerification: false
+                },
+                {
+                    content: 'STEP 4 - Accuracy Level Assignment Validation: Verify that the normalization process correctly assigns accuracy levels based on DAWA API response quality indicators.',
+                    isVerification: false
+                },
+                {
+                    content: 'VERIFICATION STEP 5 - End-to-End Result Verification: Validate normalized results. EXPECTED RESULT: Addresses correctly normalized to Danish standards with coordinates populated.',
+                    isVerification: true
+                }
+            ]
+        },
+
+        // Test Definitions - Map tests to templates and categories
+        testDefinitions: [
+            { name: '{PROJECT_NAME} {VERSION}-001: Coordinate Accuracy Field Validation', template: 'Coordinate Accuracy Field', category: 'database' },
+            { name: '{PROJECT_NAME} {VERSION}-002: Location Source Field Validation', template: 'Location Source Field', category: 'database' },
+            { name: '{PROJECT_NAME} {VERSION}-003: Location Form UI Validation', template: 'Location Form', category: 'ui' },
+            { name: '{PROJECT_NAME} {VERSION}-004: Manual Coordinate Entry Workflow', template: 'Manual Coordinate Entry', category: 'workflow' },
+            { name: '{PROJECT_NAME} {VERSION}-005: Google Maps Integration Testing', template: 'Google Maps Integration', category: 'integration' },
+            { name: '{PROJECT_NAME} {VERSION}-006: Accuracy-Based Map Zoom Validation', template: 'Accuracy-Based Map Zoom', category: 'integration' },
+            { name: '{PROJECT_NAME} {VERSION}-007: DAWA API Connectivity Testing', template: 'DAWA API Connectivity', category: 'integration' },
+            { name: '{PROJECT_NAME} {VERSION}-008: Address Normalization Testing', template: 'Address Normalization', category: 'workflow' }
+        ],
+
+        // Test Set Mappings - Organize tests into logical groups
+        testSetMappings: {
+            'database': {
+                name: '{PROJECT_NAME} {VERSION} Database Validation Set',
+                tests: ['{PROJECT_NAME} {VERSION}-001: Coordinate Accuracy Field Validation',
+                        '{PROJECT_NAME} {VERSION}-002: Location Source Field Validation']
+            },
+            'ui': {
+                name: '{PROJECT_NAME} {VERSION} User Interface Set',
+                tests: ['{PROJECT_NAME} {VERSION}-003: Location Form UI Validation']
+            },
+            'workflow': {
+                name: '{PROJECT_NAME} {VERSION} Workflow Validation Set',
+                tests: ['{PROJECT_NAME} {VERSION}-004: Manual Coordinate Entry Workflow',
+                        '{PROJECT_NAME} {VERSION}-008: Address Normalization Testing']
+            },
+            'integration': {
+                name: '{PROJECT_NAME} {VERSION} Integration Set',
+                tests: ['{PROJECT_NAME} {VERSION}-005: Google Maps Integration Testing',
+                        '{PROJECT_NAME} {VERSION}-006: Accuracy-Based Map Zoom Validation',
+                        '{PROJECT_NAME} {VERSION}-007: DAWA API Connectivity Testing']
+            }
+        },
+
+        // Test Environments - Common deployment environments
+        testEnvironments: [
+            {
+                name: 'Development (Dev)',
+                short_description: 'Development environment for initial testing and feature development',
+                type: 'development'
+            },
+            {
+                name: 'Personal Developer Instance (PDI)',
+                short_description: 'Personal Developer Instance for individual testing and development',
+                type: 'development'
+            },
+            {
+                name: 'System Integration Testing (SIT)',
+                short_description: 'System Integration Testing environment for component integration validation',
+                type: 'integration'
+            },
+            {
+                name: 'User Acceptance Testing (UAT)',
+                short_description: 'User Acceptance Testing environment for business user validation',
+                type: 'acceptance'
+            },
+            {
+                name: 'Pre-Production (PreProd)',
+                short_description: 'Pre-Production environment for final validation before production release',
+                type: 'staging'
+            },
+            {
+                name: 'Production (Prod)',
+                short_description: 'Production environment for live system testing and validation',
+                type: 'production'
+            }
+        ]
+    };
+    
+    /**
+     * =========================================================================
+     * INFRASTRUCTURE BUILDER ENGINE
+     * =========================================================================
+     * Generic engine - should not need modification for different projects
+     */
+
+    /**
+     * Logger
+     */
+    function log(message, level) {
+        var timestamp = new GlideDateTime().getDisplayValue();
+        gs.warn('[TM_BUILDER_' + DATA_CONFIG.project.version + '] ' + timestamp + ' - ' + level.toUpperCase() + ': ' + message);
+    }
+
+    /**
+     * Template replacement utility
+     */
+    function replaceTokens(text) {
+        return text.replace(/{PROJECT_NAME}/g, DATA_CONFIG.project.name)
+                  .replace(/{VERSION}/g, DATA_CONFIG.project.version);
+    }
+
+    /**
+     * Get processed test definitions with token replacement
+     */
+    function getProcessedTestDefinitions() {
+        var processed = [];
+        for (var i = 0; i < DATA_CONFIG.testDefinitions.length; i++) {
+            var testDef = DATA_CONFIG.testDefinitions[i];
+            processed.push({
+                name: replaceTokens(testDef.name),
+                template: testDef.template,
+                category: testDef.category
+            });
+        }
+        return processed;
+    }
+
+    /**
+     * Get processed test set mappings with token replacement
+     */
+    function getProcessedTestSetMappings() {
+        var processed = {};
+        for (var category in DATA_CONFIG.testSetMappings) {
+            var setDef = DATA_CONFIG.testSetMappings[category];
+            var processedTests = [];
+            for (var i = 0; i < setDef.tests.length; i++) {
+                processedTests.push(replaceTokens(setDef.tests[i]));
+            }
+            processed[category] = {
+                name: replaceTokens(setDef.name),
+                tests: processedTests
+            };
+        }
+        return processed;
+    }
+
+    /**
+     * Create test plan with configurable settings
+     */
+    function createTestPlan() {
+        log('=== CREATING TEST PLAN ===', 'info');
+        
+        try {
+            var grTestPlan = new GlideRecord('sn_test_management_test_plan');
+            grTestPlan.initialize();
+            grTestPlan.setValue('short_description', DATA_CONFIG.project.name + ' Test Plan');
+            grTestPlan.setValue('description', DATA_CONFIG.project.description);
+            grTestPlan.setValue('state', DATA_CONFIG.infrastructure.states.testPlan);
+            
+            var planStartDate = new GlideDateTime();
+            planStartDate.addDays(DATA_CONFIG.infrastructure.planDaysFromNow);
+            var planEndDate = new GlideDateTime();
+            planEndDate.addDays(DATA_CONFIG.infrastructure.planDuration);
+            
+            grTestPlan.setValue('start_date', planStartDate);
+            grTestPlan.setValue('end_date', planEndDate);
+            
+            var testPlanId = grTestPlan.insert();
+            
+            if (testPlanId) {
+                log('✓ Created test plan: ' + testPlanId + ' with state "' + DATA_CONFIG.infrastructure.states.testPlan + '"', 'info');
+                return {
+                    id: testPlanId,
+                    startDate: planStartDate,
+                    endDate: planEndDate
+                };
+            }
+        } catch (e) {
+            log('Error creating test plan: ' + e.message, 'error');
+        }
+        
+        return null;
+    }
+
+    /**
+     * Create test environments
+     */
+    function createTestEnvironments() {
+        log('=== CREATING TEST ENVIRONMENTS ===', 'info');
+        
+        var environmentsCreated = [];
+        
+        for (var i = 0; i < DATA_CONFIG.testEnvironments.length; i++) {
+            var envDef = DATA_CONFIG.testEnvironments[i];
+            
+            try {
+                var grTestEnv = new GlideRecord('sn_test_management_test_environment');
+                grTestEnv.initialize();
+                grTestEnv.setValue('name', envDef.name);
+                grTestEnv.setValue('short_description', envDef.short_description);
+                grTestEnv.setValue('type', envDef.type);
+                // Note: Not setting URL field as requested
+                
+                var testEnvId = grTestEnv.insert();
+                
+                if (testEnvId) {
+                    environmentsCreated.push({
+                        id: testEnvId,
+                        name: envDef.name,
+                        type: envDef.type
+                    });
+                    log('✓ Created test environment: ' + envDef.name + ' (' + envDef.type + ')', 'info');
+                }
+            } catch (e) {
+                log('Error creating test environment: ' + e.message, 'error');
+            }
+        }
+        
+        return environmentsCreated;
+    }
+
+    /**
+     * Create tests with verification steps
+     */
+    function createTests(testPlanId) {
+        log('=== CREATING TESTS ===', 'info');
+        
+        var testDefinitions = getProcessedTestDefinitions();
+        var testsCreated = {};
+        
+        for (var i = 0; i < testDefinitions.length; i++) {
+            var testDef = testDefinitions[i];
+            
+            try {
+                var grTest = new GlideRecord('sn_test_management_test');
+                grTest.initialize();
+                grTest.setValue('short_description', testDef.name);
+                grTest.setValue('test_plan', testPlanId);
+                
+                var testId = grTest.insert();
+                
+                if (testId) {
+                    var grTestVersion = new GlideRecord('sn_test_management_test_version');
+                    grTestVersion.initialize();
+                    grTestVersion.setValue('test', testId);
+                    grTestVersion.setValue('short_description', testDef.name + ' v1.0');
+                    grTestVersion.setValue('test_version', '1.0');
+                    grTestVersion.setValue('state', DATA_CONFIG.infrastructure.states.testVersionDraft);
+                    
+                    var testVersionId = grTestVersion.insert();
+                    
+                    if (testVersionId) {
+                        var stepTemplate = DATA_CONFIG.stepTemplates[testDef.template];
+                        
+                        for (var j = 0; j < stepTemplate.length; j++) {
+                            var grStep = new GlideRecord('sn_test_management_step');
+                            grStep.initialize();
+                            grStep.setValue('test_version', testVersionId);
+                            grStep.setValue('step', stepTemplate[j].content);
+                            grStep.setValue('order', j + 1);
+                            
+                            if (stepTemplate[j].isVerification) {
+                                grStep.setValue('needs_verification', true);
+                            }
+                            
+                            grStep.insert();
+                        }
+                        
+                        grTestVersion.setValue('state', DATA_CONFIG.infrastructure.states.testVersionReady);
+                        grTestVersion.update();
+                        
+                        grTest.setValue('runnable_version', testVersionId);
+                        grTest.setValue('latest_version', testVersionId);
+                        grTest.update();
+                        
+                        testsCreated[testDef.name] = {
+                            id: testId,
+                            versionId: testVersionId,
+                            category: testDef.category
+                        };
+                        
+                        log('✓ Created test: ' + testDef.name, 'info');
+                    }
+                }
+            } catch (e) {
+                log('Error creating test: ' + e.message, 'error');
+            }
+        }
+        
+        return testsCreated;
+    }
+
+    /**
+     * Create test sets with M2M relationships
+     */
+    function createTestSets(testPlanId, testsCreated) {
+        log('=== CREATING TEST SETS ===', 'info');
+        
+        var testSetMappings = getProcessedTestSetMappings();
+        var testSetsCreated = {};
+        
+        for (var category in testSetMappings) {
+            var setDef = testSetMappings[category];
+            
+            try {
+                var grTestSet = new GlideRecord('sn_test_management_test_set');
+                grTestSet.initialize();
+                grTestSet.setValue('name', setDef.name);
+                grTestSet.setValue('test_plan', testPlanId);
+                
+                var testSetId = grTestSet.insert();
+                
+                if (testSetId) {
+                    testSetsCreated[setDef.name] = {
+                        id: testSetId,
+                        category: category,
+                        tests: setDef.tests
+                    };
+                    
+                    log('✓ Created test set: ' + setDef.name, 'info');
+                    
+                    // Create M2M relationships
+                    for (var i = 0; i < setDef.tests.length; i++) {
+                        var testInfo = testsCreated[setDef.tests[i]];
+                        if (testInfo) {
+                            var grM2M = new GlideRecord('sn_test_management_m2m_test_set_test');
+                            grM2M.initialize();
+                            grM2M.setValue('test_set', testSetId);
+                            grM2M.setValue('test', testInfo.id);
+                            grM2M.insert();
+                            log('  Linked test: ' + setDef.tests[i], 'info');
+                        }
+                    }
+                }
+            } catch (e) {
+                log('Error creating test set: ' + e.message, 'error');
+            }
+        }
+        
+        return testSetsCreated;
+    }
+
+    /**
+     * Create test cycle with configurable settings
+     */
+    function createTestCycle(testPlan) {
+        log('=== CREATING TEST CYCLE ===', 'info');
+        
+        try {
+            var grTestCycle = new GlideRecord('sn_test_management_test_cycle');
+            grTestCycle.initialize();
+            grTestCycle.setValue('short_description', DATA_CONFIG.project.name + ' Test Cycle');
+            grTestCycle.setValue('parent', testPlan.id);
+            grTestCycle.setValue('top_task', testPlan.id);
+            grTestCycle.setValue('state', DATA_CONFIG.infrastructure.states.testCycle);
+            
+            var cycleStartDate = new GlideDateTime();
+            cycleStartDate.addDays(DATA_CONFIG.infrastructure.cycleDaysFromNow);
+            var cycleEndDate = new GlideDateTime();
+            cycleEndDate.addDays(DATA_CONFIG.infrastructure.cycleDuration);
+            
+            grTestCycle.setValue('start_date', cycleStartDate);
+            grTestCycle.setValue('end_date', cycleEndDate);
+            
+            var testCycleId = grTestCycle.insert();
+            
+            if (testCycleId) {
+                log('✓ Created test cycle: ' + testCycleId + ' with state "' + DATA_CONFIG.infrastructure.states.testCycle + '"', 'info');
+                return testCycleId;
+            }
+        } catch (e) {
+            log('Error creating test cycle: ' + e.message, 'error');
+        }
+        
+        return null;
+    }
+
+    /**
+     * Create execution suites with test assignments
+     */
+    function createExecutionSuitesWithAssignments(testPlan, testCycleId, testSetsCreated, testsCreated) {
+        log('=== CREATING EXECUTION SUITES WITH TEST ASSIGNMENTS ===', 'info');
+        
+        var executionSuites = [];
+        var suiteIndex = 0;
+        
+        for (var setName in testSetsCreated) {
+            var testSetInfo = testSetsCreated[setName];
+            
+            try {
+                var grExecSuite = new GlideRecord('sn_test_management_test_execution_suite');
+                grExecSuite.initialize();
+                grExecSuite.setValue('short_description', 'Execute: ' + setName);
+                grExecSuite.setValue('parent', testCycleId);
+                grExecSuite.setValue('top_task', testPlan.id);
+                grExecSuite.setValue('state', DATA_CONFIG.infrastructure.states.executionSuite);
+                grExecSuite.setValue('active', true);
+                
+                var suiteStartDate = new GlideDateTime();
+                suiteStartDate.addDays(3 + suiteIndex);
+                var suiteEndDate = new GlideDateTime();
+                suiteEndDate.addDays(10 + suiteIndex);
+                
+                grExecSuite.setValue('start_date', suiteStartDate);
+                grExecSuite.setValue('end_date', suiteEndDate);
+                
+                var execSuiteId = grExecSuite.insert();
+                
+                if (execSuiteId) {
+                    log('✓ Created execution suite: ' + execSuiteId + ' with state "' + DATA_CONFIG.infrastructure.states.executionSuite + '"', 'info');
+                    
+                    var assignmentCount = 0;
+                    for (var i = 0; i < testSetInfo.tests.length; i++) {
+                        var testName = testSetInfo.tests[i];
+                        var testInfo = testsCreated[testName];
+                        
+                        if (testInfo) {
+                            try {
+                                var grAssignment = new GlideRecord('sn_test_management_test_assignment');
+                                grAssignment.initialize();
+                                grAssignment.setValue('test_execution_suite', execSuiteId);
+                                grAssignment.setValue('test', testInfo.id);
+                                
+                                var assignmentId = grAssignment.insert();
+                                if (assignmentId) {
+                                    assignmentCount++;
+                                    log('  Created test assignment: ' + testName, 'info');
+                                }
+                            } catch (e) {
+                                log('  Error creating assignment: ' + e.message, 'error');
+                            }
+                        }
+                    }
+                    
+                    executionSuites.push({
+                        id: execSuiteId,
+                        name: 'Execute: ' + setName,
+                        assignments: assignmentCount
+                    });
+                    
+                    grExecSuite.setValue('total_tests', assignmentCount);
+                    grExecSuite.update();
+                }
+                
+                suiteIndex++;
+                
+            } catch (e) {
+                log('Error creating execution suite: ' + e.message, 'error');
+            }
+        }
+        
+        return executionSuites;
+    }
+
+    /**
+     * Create navigation module
+     */
+    function createMenuModule(testPlanId) {
+        log('=== CREATING MENU MODULE ===', 'info');
+        
+        try {
+            var grTestMgmtApp = new GlideRecord('sys_app_application');
+            grTestMgmtApp.addQuery('title', 'Test Management 2.0');
+            grTestMgmtApp.query();
+            
+            if (grTestMgmtApp.next()) {
+                var testMgmtAppId = grTestMgmtApp.getUniqueValue();
+                
+                var grModule = new GlideRecord('sys_app_module');
+                grModule.initialize();
+                grModule.setValue('application', testMgmtAppId);
+                grModule.setValue('title', DATA_CONFIG.project.name);
+                grModule.setValue('hint', DATA_CONFIG.project.name + ' Test Infrastructure');
+                grModule.setValue('order', '290');
+                grModule.setValue('active', true);
+                grModule.setValue('link_type', 'DIRECT');
+                
+                var moduleUrl = 'sn_test_management_test_cycle_list.do?sysparm_query=parent%3D' + testPlanId;
+                grModule.setValue('name', moduleUrl);
+                
+                var moduleId = grModule.insert();
+                
+                if (moduleId) {
+                    log('✓ Created menu module', 'info');
+                    return true;
+                }
+            }
+        } catch (e) {
+            log('Error creating menu module: ' + e.message, 'error');
+        }
+        
+        return false;
+    }
+
+    /**
+     * Main execution
+     */
+    try {
+        log('', 'info');
+        log('=========================================================================', 'info');
+        log('TEST MANAGEMENT INFRASTRUCTURE BUILDER v15.0', 'info');
+        log('=========================================================================', 'info');
+        log('Building test infrastructure for: ' + DATA_CONFIG.project.name, 'info');
+        log('Domain: ' + DATA_CONFIG.project.domain, 'info');
+        log('Description: ' + DATA_CONFIG.project.description, 'info');
+        log('', 'info');
+        
+        // Create test environments first
+        var testEnvironments = createTestEnvironments();
+        
+        var testPlan = createTestPlan();
+        if (!testPlan) {
+            log('Failed to create test plan. Exiting.', 'error');
+            return;
+        }
+        
+        var testsCreated = createTests(testPlan.id);
+        var testSetsCreated = createTestSets(testPlan.id, testsCreated);
+        var testCycleId = createTestCycle(testPlan);
+        
+        var executionSuites = [];
+        if (testCycleId) {
+            executionSuites = createExecutionSuitesWithAssignments(testPlan, testCycleId, testSetsCreated, testsCreated);
+        }
+        
+        createMenuModule(testPlan.id);
+        
+        log('', 'info');
+        log('=========================================================================', 'info');
+        log('INFRASTRUCTURE CREATION COMPLETE', 'info');
+        log('=========================================================================', 'info');
+        log('', 'info');
+        
+        var totalAssignments = 0;
+        for (var i = 0; i < executionSuites.length; i++) {
+            totalAssignments += executionSuites[i].assignments;
+        }
+        
+        log('CREATED COMPONENTS:', 'info');
+        log('• ' + testEnvironments.length + ' Test Environments (Dev, PDI, SIT, UAT, PreProd, Production)', 'info');
+        log('• 1 Test Plan: ' + DATA_CONFIG.project.name + ' Test Plan', 'info');
+        log('• ' + Object.keys(testsCreated).length + ' Tests with verification steps', 'info');
+        log('• ' + Object.keys(testSetsCreated).length + ' Test Sets with M2M relationships', 'info');
+        log('• 1 Test Cycle: ' + DATA_CONFIG.project.name + ' Test Cycle', 'info');
+        log('• ' + executionSuites.length + ' Execution Suites', 'info');
+        log('• ' + totalAssignments + ' Test Assignments', 'info');
+        log('• Navigation module: ' + DATA_CONFIG.project.name, 'info');
+        log('', 'info');
+        
+        log('SUCCESS! Test infrastructure ready for: ' + DATA_CONFIG.project.name, 'info');
+        log('Navigate to: Test Management 2.0 > ' + DATA_CONFIG.project.name, 'info');
+        log('', 'info');
+        log('=========================================================================', 'info');
+
+    } catch (e) {
+        log('CRITICAL ERROR: ' + e.message, 'error');
+        log('Stack trace: ' + e.stack, 'error');
+    }
+
+})();
+
+/*
+ * =========================================================================
+ * Test Management Infrastructure Builder v15.0 
+ * =========================================================================
+ * 
+ * REUSABLE FRAMEWORK:
+ * 
+ * To create test infrastructure for other projects:
+ * 1. Modify DATA_CONFIG.project section with your project details
+ * 2. Update DATA_CONFIG.stepTemplates with your test scenarios  
+ * 3. Adjust DATA_CONFIG.testDefinitions and testSetMappings as needed
+ * 4. Run script to generate complete test infrastructure
+ * 
+ * Current configuration creates: DAWA Coordinate Accuracy test infrastructure
+ * 
+ * =========================================================================
+ */

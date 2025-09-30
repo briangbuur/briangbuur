@@ -1,0 +1,228 @@
+PROMPT: TEST MANAGEMENT INFRASTRUCTURE BUILDER V.1
+
+**Primary Task:** Update `Test_Management_Infrastructure_Builder_v15.1.js` to create comprehensive test scenarios based on requirements from `[SOURCE_SCRIPT_NAME]`. Modify ONLY the DATA_CONFIG section - do not alter the functional code engine.
+
+**Output Requirements:**
+- Rename script to: `Test_Management_Infrastructure_Builder_v15.1_[SOURCE_SCRIPT_SUFFIX].js`
+- Add version control: Include `SCRIPT_VERSION = "v1.00";` in script description
+- Scope: DATA_CONFIG section modifications only
+
+**Source Analysis Instructions:**
+Analyze `[SOURCE_SCRIPT_NAME]` to identify:
+1. Core components requiring testing validation
+2. Database fields, tables, and data structures created/modified
+3. UI elements, policies, and form behaviors
+4. Business rules, workflows, and automation logic
+5. Integration points with external systems
+6. **All user roles mentioned, referenced, or required in source script**
+7. Performance requirements and benchmarks
+8. Error handling and edge case scenarios
+
+**Test Environment Specifications:**
+- Primary Target: `[IDENTIFY_FROM_SOURCE]`
+- Secondary Targets: Test Management 2.0 infrastructure (if TM builder script)
+- Required test roles: `[IDENTIFY_ALL_ROLES_FROM_SOURCE_AND_FUNCTIONAL_CONTEXT]`, admin (baseline functionality), readonly (permission boundary testing)
+- Test user setup: Direct role assignment (not groups) for test isolation
+- Test user naming: test.[role_name] format
+- Instance name variable: `[INSTANCE_NAME]` (to be replaced with actual instance)
+- Browser/Platform coverage: Chrome, Firefox, Safari, Edge (Desktop), ServiceNow Mobile app (iOS/Android)
+- Interface coverage: Classic UI, Next Experience UI, Service Portal, Agent Workspace
+- Performance benchmarks: UI response <2s, integrations <3s, business rules <1s
+
+**Mandatory Test Step Template (Steps can be repeated within same test for validation at multiple points):**
+
+**Step 1 - Test Purpose & Scope:**
+```
+"PURPOSE: [Specific component/functionality being validated from source script]
+TECHNICAL SCOPE: [Exact technical element being tested - fields, rules, UI components]
+PROCESS SCOPE: [Business process or workflow being validated]
+BUSINESS VALUE: [Why this validation matters for the system]
+SUCCESS CRITERIA: [Specific, measurable conditions for PASS result]"
+```
+
+**Step 2 - Authentication & Role Setup:**
+```
+"REQUIRED ROLE: [Specific role needed for this test scenario]
+LOGIN PROCESS: Access ServiceNow as test.[role] user
+IMPERSONATION STEPS: 
+1. Click this URL: https://[INSTANCE_NAME].service-now.com/sys_user_impersonate.do
+2. Search for test.[role] user in the impersonation field
+3. Click 'Impersonate User' button
+VERIFICATION: Confirm [role] permissions active by checking User Menu > Profile
+ROLE ASSIGNMENT: Direct role assignment (not groups) for test isolation"
+```
+
+**Step 3 - Preconditions & Test Setup:**
+```
+"RECORD CREATION: [Specific records that must exist before main test]
+DATA REQUIREMENTS: [Exact field values and configurations needed]
+SETUP STEPS: [Detailed preparation actions]
+DEPENDENCIES: [System state requirements and validations]
+SETUP VERIFICATION: [Confirm all preconditions are met before proceeding]"
+```
+
+**Step 4 - Navigation & URL Access:**
+```
+"NAVIGATION PATH: [Step-by-step menu navigation to target functionality]
+DIRECT URL: Click here: https://[INSTANCE_NAME].service-now.com/[specific_path_from_source]
+UI VERIFICATION: Confirm correct page/form loaded with required elements visible"
+```
+
+**Step 5+ - Test Execution Actions (Repeatable):**
+```
+"EXECUTION ACTION: [Precise, step-by-step instruction]
+INPUT DATA: [Exact values to enter - use realistic examples from source domain]
+EXPECTED IMMEDIATE RESPONSE: [What should happen right after this action]
+ERROR HANDLING: [What to do if unexpected behavior occurs]"
+```
+
+**Intermediate Validation Steps (Mark as isVerification: true, repeatable):**
+```
+"VALIDATION CHECKPOINT [X]:
+- Current State Check: [Verify system state at this point]
+- Data Integrity: [Confirm data changes are correct so far]
+- UI Response: [Validate interface behavior up to this point]
+- Process Status: [Check workflow/process state]
+CHECKPOINT PASS: [Specific conditions that must be met to continue]
+CHECKPOINT FAIL: [Conditions that indicate test should stop here]
+CONTINUE TO: [Next step if validation passes]"
+```
+
+**Final Validation Step (Mark as isVerification: true):**
+```
+"FINAL VALIDATION CHECKLIST:
+- Database Fields: [Verify specific field values match expected results]
+- UI Behavior: [Confirm interface responds as designed]
+- Data Persistence: [Check data saves correctly and survives refresh]
+- Business Logic: [Validate rules/workflows execute properly]
+- Process Workflow: [Confirm end-to-end process completion]
+- Integration Points: [Test external system connections if applicable]
+- Role Permissions: [Confirm appropriate access controls]
+PASS CRITERIA: All validation points completed successfully
+FAIL CRITERIA: Any validation point fails or produces unexpected results
+EVIDENCE COLLECTION: [Screenshots, log entries, or data exports required]"
+```
+
+**Cleanup Step:**
+```
+"CLEANUP REQUIREMENTS:
+1. Delete test records: [Specific identification and removal steps]
+2. Reset field values: [Return any modified system data to original state]
+3. Clear cache/sessions: [Any browser or system clearing needed]
+4. Verification: [Confirm no test artifacts remain in system]
+5. Impact check: [Ensure cleanup doesn't affect other tests or system state]"
+```
+
+**Test Management 2.0 Infrastructure Creation Guidelines:**
+
+When the source script creates Test Management 2.0 operational data, provide these creation instructions based on TM 2.0 best practices:
+
+**Test Plan Creation Guidelines:**
+- Purpose: High-level container for organizing testing efforts across major releases/projects
+- Timeframe: Should span 3-6 months for strategic level planning
+- Use for: Executive reporting and resource planning
+- Best practice: Keep at strategic level, link to project/release records
+- Naming convention: "[SOURCE_PROJECT_NAME] Test Plan"
+
+**Test Cycle Creation Guidelines:**
+- Purpose: Subdivide test plans into manageable testing windows
+- Duration: 2-4 weeks aligned with development cadence
+- Patterns: Per sprint (Agile), per phase (Dev/SIT/UAT), per testing type
+- Best practice: Align with development lifecycle
+- Naming convention: "[PROJECT_NAME] Test Cycle"
+
+**Test Creation Guidelines:**
+- Purpose: Reusable test definitions for specific functionality
+- Structure: Atomic and focused, 3-7 steps typically
+- Requirements: At least one verification step, proper versioning
+- Best practice: One test per user story/requirement
+- Naming convention: "{PROJECT_NAME} {VERSION}-001: [Descriptive Test Name]"
+
+**Test Set Creation Guidelines:**
+- Purpose: Logical grouping for reuse across execution cycles
+- Size: 10-30 tests for optimal flexibility
+- Types: Regression sets, smoke test sets, feature sets, role-based sets
+- Best practice: Create for frequently reused combinations
+- Naming convention: "{PROJECT_NAME} {VERSION} [Category] Set"
+
+**Test Execution Suite Creation Guidelines:**
+- Purpose: Define WHO tests WHAT and WHEN within cycles
+- Size: 20-50 tests maximum for manageability
+- Assignment: Clear ownership (single tester or small team)
+- Duration: 1-5 days typical timeframe
+- Best practice: Multiple smaller suites vs one large suite
+- Naming convention: "Execute: [TEST_SET_NAME]"
+
+**Hierarchy Structure and State Requirements:**
+- Test Plan → Test Cycles → Test Execution Suites → Test Assignments
+- Test Plans: Active state required
+- Test Cycles: Valid date ranges required
+- Test Execution Suites: Active state required
+- Tests: Ready state required for execution
+
+**Test Category Framework:**
+Organize tests into logical categories based on source script components:
+
+**Database/Infrastructure Tests:**
+- Field creation and configuration validation
+- Data type and constraint verification  
+- Choice list and reference data accuracy
+- Default value and mandatory field behavior
+
+**User Interface Tests:**
+- Form layout and field visibility
+- UI policy and client script functionality
+- Cross-platform consistency (Classic/Portal/Mobile)
+- Role-based field access and editability
+
+**Business Logic Tests:**
+- Business rule execution and conditions
+- Workflow and automation trigger validation
+- Data transformation and calculation accuracy
+- Error handling and exception management
+
+**Process Workflow Tests:**
+- End-to-end business process validation
+- User workflow completion testing
+- Process integration points verification
+- Workflow state transition accuracy
+
+**Integration Tests:**
+- External system connectivity and authentication
+- API endpoint functionality and response handling
+- Data synchronization and mapping accuracy
+- Performance under load and error conditions
+
+**Role & Security Tests:**
+- Permission boundary enforcement
+- Role hierarchy and delegation functionality
+- Access control list (ACL) validation
+- Cross-role data visibility and modification rights
+
+**Quality Assurance Requirements:**
+- Each test must be completely self-contained
+- Multiple validation checkpoints within single tests for granular failure identification
+- No external manual setup required outside defined steps
+- All test data created and cleaned up within test procedures
+- Clear PASS/FAIL criteria with measurable outcomes
+- Realistic test data reflecting actual business scenarios
+- Cross-browser and cross-platform validation where applicable
+- Performance benchmarks aligned with business requirements
+
+**Instructions for Implementation:**
+1. Replace `[SOURCE_SCRIPT_NAME]` with actual source script filename
+2. Replace `[SOURCE_SCRIPT_SUFFIX]` with appropriate identifying suffix
+3. Replace `[INSTANCE_NAME]` with actual ServiceNow instance name
+4. Analyze source script to identify ALL roles mentioned, implied, or required
+5. Include admin and readonly roles for baseline and boundary testing
+6. Use direct role assignment for test users (not groups)
+7. Map each component to appropriate test category including process workflows
+8. Create comprehensive step templates with multiple validation checkpoints
+9. Include domain-specific test data relevant to source script functionality
+10. Ensure test coverage addresses all user roles and permission scenarios
+11. Validate that cleanup procedures completely restore system state
+12. Follow TM 2.0 best practices for infrastructure object creation and naming
+
+---
+
+This comprehensive prompt integrates all our discussed elements: role identification from source, repeatable validation steps, TM 2.0 best practices, comprehensive interface coverage, and practical implementation guidance.
